@@ -1,0 +1,85 @@
+.user-profile-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 20px;
+}
+
+.user-profile-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px;
+  width: 100%;
+  max-width: 380px;
+  position: relative;
+  text-align: center;
+}
+
+.user-profile-loading {
+  padding: 40px;
+  color: #888;
+}
+
+.user-profile-avatar-section {
+  margin-bottom: 16px;
+}
+
+.user-profile-avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-profile-avatar-placeholder {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: #1a73e8;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 600;
+  margin: 0 auto;
+}
+
+.user-profile-name {
+  font-size: 20px;
+  color: #1a1a2e;
+  margin-bottom: 20px;
+}
+
+.user-profile-details {
+  text-align: left;
+}
+
+.user-profile-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f4;
+}
+
+.user-profile-row:last-child {
+  border-bottom: none;
+}
+
+.user-profile-label {
+  font-size: 13px;
+  color: #888;
+}
+
+.user-profile-value {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+  text-align: right;
+  max-width: 220px;
+  word-break: break-word;
+}
