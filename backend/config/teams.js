@@ -1,4 +1,5 @@
-const TEAMS = [
+const DEPARTMENTS = [
+  'Президент',
   'Вице-президент',
   'Главный бухгалтер',
   'Главный экономист',
@@ -28,7 +29,7 @@ const DOCUMENT_STATUSES = [
   'На рассмотрении',
   'Доработка',
   'Согласование',
-  'Выполнено'
+  'Утверждено'
 ];
 
-module.exports = { TEAMS, DOCUMENT_TYPES, DOCUMENT_STATUSES };
+module.exports = { DEPARTMENTS, DOCUMENT_TYPES, DOCUMENT_STATUSES };

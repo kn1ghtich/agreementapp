@@ -10,7 +10,7 @@ const MyDocuments = () => {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [docTypes, setDocTypes] = useState([]);
-  const [teams, setTeams] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [editDoc, setEditDoc] = useState(null);
   const [editData, setEditData] = useState({});
   const [editFile, setEditFile] = useState(null);
@@ -18,14 +18,15 @@ const MyDocuments = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [viewProfileId, setViewProfileId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
     Promise.all([
       API.get('/documents/types'),
-      API.get('/auth/teams')
-    ]).then(([typesRes, teamsRes]) => {
+      API.get('/auth/departments')
+    ]).then(([typesRes, deptsRes]) => {
       setDocTypes(typesRes.data);
-      setTeams(teamsRes.data);
+      setDepartments(deptsRes.data);
     }).catch(() => {});
     fetchDocuments();
   }, []);
@@ -48,7 +49,7 @@ const MyDocuments = () => {
     return true;
   });
 
-  const isOverdue = (doc) => new Date(doc.deadline) < new Date() && doc.status !== 'Выполнено';
+  const isOverdue = (doc) => new Date(doc.deadline) < new Date() && doc.status !== 'Утверждено';
 
   const formatDate = (date) => {
     return new Date(date).toLocaleDateString('ru-RU', {
@@ -59,7 +60,7 @@ const MyDocuments = () => {
   const getStatusColor = (status) => {
     const colors = {
       'Входящие': '#1a73e8', 'На рассмотрении': '#FB8C00',
-      'Доработка': '#E53935', 'Согласование': '#8E24AA', 'Выполнено': '#43A047'
+      'Доработка': '#E53935', 'Согласование': '#8E24AA', 'Утверждено': '#43A047'
     };
     return colors[status] || '#666';
   };
@@ -70,7 +71,7 @@ const MyDocuments = () => {
       title: doc.title,
       description: doc.description || '',
       documentType: doc.documentType,
-      team: doc.team,
+      departments: doc.departments || [],
       deadline: doc.deadline ? new Date(doc.deadline).toISOString().split('T')[0] : ''
     });
     setEditFile(null);
@@ -79,6 +80,15 @@ const MyDocuments = () => {
 
   const handleEditChange = (e) => {
     setEditData({ ...editData, [e.target.name]: e.target.value });
+  };
+
+  const handleEditDeptToggle = (dept) => {
+    setEditData(prev => ({
+      ...prev,
+      departments: prev.departments.includes(dept)
+        ? prev.departments.filter(d => d !== dept)
+        : [...prev.departments, dept]
+    }));
   };
 
   const handleEditFileChange = (e) => {
@@ -98,7 +108,7 @@ const MyDocuments = () => {
       formData.append('title', editData.title);
       formData.append('description', editData.description);
       formData.append('documentType', editData.documentType);
-      formData.append('team', editData.team);
+      formData.append('departments', editData.departments.join(','));
       formData.append('deadline', editData.deadline);
       if (editFile) formData.append('file', editFile);
 
@@ -113,6 +123,18 @@ const MyDocuments = () => {
       setMessage({ text: err.response?.data?.message || 'Ошибка', type: 'error' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (docId) => {
+    try {
+      await API.delete(`/documents/${docId}`);
+      setDocuments(prev => prev.filter(d => d._id !== docId));
+      setDeleteConfirm(null);
+      setMessage({ text: 'Документ удалён', type: 'success' });
+    } catch (err) {
+      setMessage({ text: err.response?.data?.message || 'Ошибка удаления', type: 'error' });
+      setDeleteConfirm(null);
     }
   };
 
@@ -142,7 +164,7 @@ const MyDocuments = () => {
           <option value="На рассмотрении">На рассмотрении</option>
           <option value="Доработка">Доработка</option>
           <option value="Согласование">Согласование</option>
-          <option value="Выполнено">Выполнено</option>
+          <option value="Утверждено">Утверждено</option>
         </select>
       </div>
 
@@ -173,13 +195,28 @@ const MyDocuments = () => {
                 <h3 className="mydoc-title">{doc.title}</h3>
                 {doc.description && <p className="mydoc-desc">{doc.description}</p>}
                 <div className="mydoc-meta">
-                  <span>Команда: {doc.team}</span>
+                  <span>Отделы: {doc.departments?.join(', ')}</span>
                   <span className={isOverdue(doc) ? 'overdue-text' : ''}>
                     Срок: {formatDate(doc.deadline)}
                   </span>
                 </div>
+
+                {/* Department statuses */}
+                {doc.departmentStatuses && doc.departmentStatuses.length > 0 && (
+                  <div className="mydoc-dept-statuses">
+                    {doc.departmentStatuses.map((ds, i) => (
+                      <div key={i} className="dept-status-mini">
+                        <span className="dept-status-mini-name">{ds.department}</span>
+                        <span className="status-badge-sm" style={{ background: getStatusColor(ds.status) }}>
+                          {ds.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {doc.file && (
-                  <div className="mydoc-file" onClick={() => window.open(`http://localhost:5000${doc.file.path}`, '_blank')}>
+                  <div className="mydoc-file" onClick={() => window.open(`http://localhost:5000/api/files/${doc.file.fileId}/download`, '_blank')}>
                     <span className="file-icon-sm">DOCX</span>
                     <span>{doc.file.originalName}</span>
                   </div>
@@ -211,15 +248,37 @@ const MyDocuments = () => {
                     ))}
                   </div>
                 )}
-                <button className="btn-edit" onClick={() => openEdit(doc)}>
-                  Редактировать
-                </button>
+                <div className="mydoc-actions">
+                  <button className="btn-edit" onClick={() => openEdit(doc)}>
+                    Редактировать
+                  </button>
+                  <button className="btn-delete" onClick={() => setDeleteConfirm(doc._id)}>
+                    Удалить
+                  </button>
+                </div>
               </div>
             </div>
           ))
         )}
       </div>
 
+      {/* Delete confirmation */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="modal-content modal-small" onClick={e => e.stopPropagation()}>
+            <div className="modal-body" style={{ textAlign: 'center', padding: '30px' }}>
+              <h3>Удалить документ?</h3>
+              <p style={{ color: '#666', margin: '12px 0 20px' }}>Это действие нельзя отменить</p>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button className="btn-delete" onClick={() => handleDelete(deleteConfirm)}>Удалить</button>
+                <button className="btn-secondary" onClick={() => setDeleteConfirm(null)}>Отмена</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
       {editDoc && (
         <div className="modal-overlay" onClick={() => setEditDoc(null)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -246,22 +305,27 @@ const MyDocuments = () => {
                     style={{padding: '12px 16px', border: '2px solid #e0e0e0', borderRadius: '8px', fontSize: '14px', outline: 'none', resize: 'vertical', fontFamily: 'inherit'}}
                   />
                 </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Тип документа</label>
-                    <select name="documentType" value={editData.documentType} onChange={handleEditChange} required>
-                      {docTypes.map(t => (
-                        <option key={t.name} value={t.name}>{t.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Команда</label>
-                    <select name="team" value={editData.team} onChange={handleEditChange} required>
-                      {teams.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
+                <div className="form-group">
+                  <label>Тип документа</label>
+                  <select name="documentType" value={editData.documentType} onChange={handleEditChange} required>
+                    {docTypes.map(t => (
+                      <option key={t.name} value={t.name}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Отделы-получатели</label>
+                  <div className="departments-checklist">
+                    {departments.map(dept => (
+                      <label key={dept} className={`dept-checkbox ${editData.departments?.includes(dept) ? 'checked' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={editData.departments?.includes(dept) || false}
+                          onChange={() => handleEditDeptToggle(dept)}
+                        />
+                        <span>{dept}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
                 <div className="form-group">

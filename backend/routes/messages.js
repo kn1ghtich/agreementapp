@@ -1,53 +1,21 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const File = require('../models/File');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Fix multer latin1 encoding for non-ASCII filenames
-function fixOriginalName(file) {
-  return Buffer.from(file.originalname, 'latin1').toString('utf8');
-}
-
-// Helper: generate unique filename preserving original name
-function getUniqueFilename(dir, originalName) {
-  const ext = path.extname(originalName);
-  const base = path.basename(originalName, ext);
-  let filename = originalName;
-  let counter = 1;
-
-  while (fs.existsSync(path.join(dir, filename))) {
-    filename = `${base}(${counter})${ext}`;
-    counter++;
-  }
-  return filename;
-}
-
-// Multer for chat file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/documents/');
-  },
-  filename: (req, file, cb) => {
-    const originalName = fixOriginalName(file);
-    const uniqueName = getUniqueFilename(
-      path.join(__dirname, '..', 'uploads', 'documents'),
-      originalName
-    );
-    cb(null, uniqueName);
-  }
-});
-
+// Multer with memory storage
+const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|webp|docx/;
-    if (allowedTypes.test(path.extname(fixOriginalName(file)).toLowerCase())) {
+    const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    if (/\.(jpeg|jpg|png|webp|docx)$/i.test(name)) {
       cb(null, true);
     } else {
       cb(new Error('Допустимы только изображения и .docx файлы'));
@@ -55,7 +23,7 @@ const upload = multer({
   }
 });
 
-// GET /api/messages/users — search users for chat
+// GET /api/messages/users
 router.get('/users', protect, async (req, res) => {
   try {
     const { search } = req.query;
@@ -66,7 +34,7 @@ router.get('/users', protect, async (req, res) => {
     }
 
     const users = await User.find(filter)
-      .select('fullName avatar team')
+      .select('fullName avatar department')
       .limit(20);
 
     res.json(users);
@@ -75,7 +43,7 @@ router.get('/users', protect, async (req, res) => {
   }
 });
 
-// GET /api/messages/chats — get chat list with last messages
+// GET /api/messages/chats
 router.get('/chats', protect, async (req, res) => {
   try {
     const userId = req.user._id;
@@ -109,7 +77,7 @@ router.get('/chats', protect, async (req, res) => {
 
     const chatIds = messages.map(m => m._id);
     const users = await User.find({ _id: { $in: chatIds } })
-      .select('fullName avatar team');
+      .select('fullName avatar department');
 
     const userMap = {};
     users.forEach(u => { userMap[u._id.toString()] = u; });
@@ -131,7 +99,7 @@ router.get('/chats', protect, async (req, res) => {
   }
 });
 
-// GET /api/messages/:userId — get messages with a specific user
+// GET /api/messages/:userId
 router.get('/:userId', protect, async (req, res) => {
   try {
     const messages = await Message.find({
@@ -154,7 +122,7 @@ router.get('/:userId', protect, async (req, res) => {
   }
 });
 
-// POST /api/messages/:userId — send message
+// POST /api/messages/:userId
 router.post('/:userId', protect, upload.single('file'), async (req, res) => {
   try {
     const msgData = {
@@ -165,14 +133,18 @@ router.post('/:userId', protect, upload.single('file'), async (req, res) => {
     };
 
     if (req.file) {
-      const originalName = fixOriginalName(req.file);
+      const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
       const ext = path.extname(originalName).toLowerCase();
       msgData.messageType = /\.(jpg|jpeg|png|webp)$/i.test(ext) ? 'image' : 'document';
-      msgData.file = {
+
+      const fileDoc = await File.create({
         originalName,
-        fileName: req.file.filename,
-        path: `/uploads/documents/${req.file.filename}`
-      };
+        contentType: req.file.mimetype,
+        data: req.file.buffer,
+        size: req.file.size
+      });
+
+      msgData.file = { fileId: fileDoc._id, originalName };
       if (!msgData.content) {
         msgData.content = originalName;
       }

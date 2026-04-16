@@ -14,7 +14,6 @@ export const AuthProvider = ({ children }) => {
     if (stored) {
       const parsed = JSON.parse(stored);
       setUser(parsed);
-      // Verify token is still valid
       API.get('/users/me')
         .then(res => {
           setUser(prev => ({ ...prev, ...res.data }));
@@ -45,6 +44,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('adminToken');
     setUser(null);
   };
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const { TEAMS } = require('../config/teams');
+const { DEPARTMENTS } = require('../config/teams');
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ const generateToken = (id) => {
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { login, email, password, fullName, phone, team } = req.body;
+    const { login, email, password, fullName, phone, department } = req.body;
 
     const existingUser = await User.findOne({ $or: [{ login }, { email }] });
     if (existingUser) {
@@ -21,12 +21,7 @@ router.post('/register', async (req, res) => {
     }
 
     const user = await User.create({
-      login,
-      email,
-      password,
-      fullName,
-      phone,
-      team
+      login, email, password, fullName, phone, department
     });
 
     res.status(201).json({
@@ -35,7 +30,7 @@ router.post('/register', async (req, res) => {
       email: user.email,
       fullName: user.fullName,
       phone: user.phone,
-      team: user.team,
+      department: user.department,
       avatar: user.avatar,
       token: generateToken(user._id)
     });
@@ -73,7 +68,7 @@ router.post('/login', async (req, res) => {
       email: user.email,
       fullName: user.fullName,
       phone: user.phone,
-      team: user.team,
+      department: user.department,
       avatar: user.avatar,
       token: generateToken(user._id)
     });
@@ -82,9 +77,9 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/teams
-router.get('/teams', (req, res) => {
-  res.json(TEAMS);
+// GET /api/auth/departments
+router.get('/departments', (req, res) => {
+  res.json(DEPARTMENTS);
 });
 
 module.exports = router;

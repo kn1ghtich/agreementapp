@@ -13,7 +13,7 @@ const Navbar = () => {
 
   const getAvatarUrl = () => {
     if (user?.avatar) {
-      return `http://localhost:5000${user.avatar}`;
+      return `http://localhost:5000/api/files/${user.avatar}`;
     }
     return null;
   };
@@ -33,7 +33,7 @@ const Navbar = () => {
       </div>
 
       <div className="navbar-links">
-        <NavLink to="/" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+        <NavLink to="/" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'} end>
           Главная
         </NavLink>
         <NavLink to="/calendar" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
@@ -44,6 +44,12 @@ const Navbar = () => {
         </NavLink>
         <NavLink to="/my-documents" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
           Мои документы
+        </NavLink>
+        <NavLink to="/statistics" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+          Статистика
+        </NavLink>
+        <NavLink to="/archive" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+          Архив
         </NavLink>
         <NavLink to="/chat" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
           Чат
@@ -57,7 +63,6 @@ const Navbar = () => {
           ) : (
             <div className="navbar-avatar-placeholder">{getInitials()}</div>
           )}
-          <span className="navbar-username">{user?.fullName}</span>
         </NavLink>
         <button onClick={handleLogout} className="btn-logout">Выйти</button>
       </div>

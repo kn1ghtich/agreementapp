@@ -125,7 +125,7 @@ const Chat = () => {
     return new Date(date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const getAvatarUrl = (u) => u?.avatar ? `http://localhost:5000${u.avatar}` : null;
+  const getAvatarUrl = (u) => u?.avatar ? `http://localhost:5000/api/files/${u.avatar}` : null;
   const getInitials = (u) => {
     if (u?.fullName) {
       const parts = u.fullName.split(' ');
@@ -163,7 +163,7 @@ const Chat = () => {
                     )}
                     <div>
                       <span className="search-name">{u.fullName}</span>
-                      <span className="search-team">{u.team}</span>
+                      <span className="search-team">{u.department}</span>
                     </div>
                   </div>
                 ))}
@@ -227,7 +227,7 @@ const Chat = () => {
               )}
               <div>
                 <h3 className="clickable-name">{activeChat.fullName}</h3>
-                <span className="chat-header-team">{activeChat.team}</span>
+                <span className="chat-header-team">{activeChat.department}</span>
               </div>
             </div>
 
@@ -240,16 +240,16 @@ const Chat = () => {
                   <div className="message-bubble">
                     {msg.messageType === 'image' && msg.file && (
                       <img
-                        src={`http://localhost:5000${msg.file.path}`}
+                        src={`http://localhost:5000/api/files/${msg.file.fileId}`}
                         alt=""
                         className="message-image"
-                        onClick={() => window.open(`http://localhost:5000${msg.file.path}`, '_blank')}
+                        onClick={() => window.open(`http://localhost:5000/api/files/${msg.file.fileId}`, '_blank')}
                       />
                     )}
                     {msg.messageType === 'document' && msg.file && (
                       <div
                         className="message-doc"
-                        onClick={() => window.open(`http://localhost:5000${msg.file.path}`, '_blank')}
+                        onClick={() => window.open(`http://localhost:5000/api/files/${msg.file.fileId}/download`, '_blank')}
                       >
                         <span className="file-icon-sm">DOCX</span>
                         <span>{msg.file.originalName}</span>

@@ -10,19 +10,19 @@ const Register = () => {
     email: '',
     fullName: '',
     phone: '',
-    team: '',
+    department: '',
     password: '',
     confirmPassword: ''
   });
-  const [teams, setTeams] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    API.get('/auth/teams')
-      .then(res => setTeams(res.data))
+    API.get('/auth/departments')
+      .then(res => setDepartments(res.data))
       .catch(() => {});
   }, []);
 
@@ -116,17 +116,17 @@ const Register = () => {
               />
             </div>
             <div className="form-group">
-              <label htmlFor="team">Команда *</label>
+              <label htmlFor="department">Отдел *</label>
               <select
-                id="team"
-                name="team"
-                value={formData.team}
+                id="department"
+                name="department"
+                value={formData.department}
                 onChange={handleChange}
                 required
               >
-                <option value="">Выберите команду</option>
-                {teams.map((team) => (
-                  <option key={team} value={team}>{team}</option>
+                <option value="">Выберите отдел</option>
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>{dept}</option>
                 ))}
               </select>
             </div>

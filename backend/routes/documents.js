@@ -1,54 +1,21 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const Document = require('../models/Document');
-const User = require('../models/User');
+const File = require('../models/File');
 const { protect } = require('../middleware/auth');
 const { DOCUMENT_TYPES } = require('../config/teams');
 
 const router = express.Router();
 
-// Fix multer latin1 encoding for non-ASCII filenames
-function fixOriginalName(file) {
-  return Buffer.from(file.originalname, 'latin1').toString('utf8');
-}
-
-// Helper: generate unique filename preserving original name
-function getUniqueFilename(dir, originalName) {
-  const ext = path.extname(originalName);
-  const base = path.basename(originalName, ext);
-  let filename = originalName;
-  let counter = 1;
-
-  while (fs.existsSync(path.join(dir, filename))) {
-    filename = `${base}(${counter})${ext}`;
-    counter++;
-  }
-  return filename;
-}
-
-// Multer for document uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/documents/');
-  },
-  filename: (req, file, cb) => {
-    const originalName = fixOriginalName(file);
-    const uniqueName = getUniqueFilename(
-      path.join(__dirname, '..', 'uploads', 'documents'),
-      originalName
-    );
-    cb(null, uniqueName);
-  }
-});
-
+// Multer with memory storage (files go to MongoDB)
+const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /\.docx$/i;
-    if (allowedTypes.test(path.extname(fixOriginalName(file)))) {
+    const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    if (/\.docx$/i.test(name)) {
       cb(null, true);
     } else {
       cb(new Error('Допустимы только .docx файлы'));
@@ -56,41 +23,133 @@ const upload = multer({
   }
 });
 
-const POPULATE_SENDER = 'fullName avatar team';
+const POPULATE_SENDER = 'fullName avatar department';
 const POPULATE_MODIFIER = 'fullName';
 const POPULATE_COMMENT_AUTHOR = 'fullName avatar';
+const POPULATE_DEPT_CHANGED_BY = 'fullName';
+
+function populateDoc(query) {
+  return query
+    .populate('sender', POPULATE_SENDER)
+    .populate('lastModifiedBy', POPULATE_MODIFIER)
+    .populate('comments.author', POPULATE_COMMENT_AUTHOR)
+    .populate('departmentStatuses.changedBy', POPULATE_DEPT_CHANGED_BY);
+}
 
 // GET /api/documents/types
 router.get('/types', protect, (req, res) => {
   res.json(DOCUMENT_TYPES);
 });
 
+// GET /api/documents/stats
+router.get('/stats', protect, async (req, res) => {
+  try {
+    const { dateFrom, dateTo, period } = req.query;
+    let matchFilter = {};
+
+    if (dateFrom && dateTo) {
+      matchFilter.createdAt = {
+        $gte: new Date(dateFrom),
+        $lte: new Date(new Date(dateTo).setHours(23, 59, 59, 999))
+      };
+    } else if (period === 'week') {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      matchFilter.createdAt = { $gte: d };
+    } else if (period === 'month') {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      matchFilter.createdAt = { $gte: d };
+    }
+
+    const byType = await Document.aggregate([
+      { $match: matchFilter },
+      { $group: { _id: '$documentType', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    const docs = await Document.find(matchFilter).select('departmentStatuses');
+    const statusCounts = {};
+    docs.forEach(doc => {
+      const s = doc.status; // virtual
+      statusCounts[s] = (statusCounts[s] || 0) + 1;
+    });
+    const byStatus = Object.entries(statusCounts).map(([_id, count]) => ({ _id, count }));
+
+    const total = docs.length;
+
+    // Per-department stats
+    const byDepartment = await Document.aggregate([
+      { $match: matchFilter },
+      { $unwind: '$departments' },
+      { $group: { _id: '$departments', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    res.json({ total, byType, byStatus, byDepartment });
+  } catch (error) {
+    res.status(500).json({ message: 'Ошибка получения статистики' });
+  }
+});
+
+// GET /api/documents/archive
+router.get('/archive', protect, async (req, res) => {
+  try {
+    const { search, documentType, dateFrom, dateTo } = req.query;
+    const filter = {};
+
+    if (search) filter.title = { $regex: search, $options: 'i' };
+    if (documentType) filter.documentType = documentType;
+    if (dateFrom || dateTo) {
+      filter.createdAt = {};
+      if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
+      if (dateTo) filter.createdAt.$lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+    }
+
+    const docs = await populateDoc(Document.find(filter).sort({ createdAt: -1 }));
+    res.json(docs);
+  } catch (error) {
+    res.status(500).json({ message: 'Ошибка получения архива' });
+  }
+});
+
 // POST /api/documents
 router.post('/', protect, upload.single('file'), async (req, res) => {
   try {
-    const { title, description, documentType, team, deadline } = req.body;
+    const { title, description, documentType, deadline } = req.body;
+    let departments = req.body.departments;
+    if (typeof departments === 'string') {
+      departments = departments.split(',').map(d => d.trim()).filter(Boolean);
+    }
 
     const docData = {
       title,
       description: description || '',
       documentType,
-      team,
+      departments,
+      senderDepartment: req.user.department,
       deadline: new Date(deadline),
       sender: req.user._id,
-      status: 'Входящие'
+      departmentStatuses: departments.map(dept => ({
+        department: dept,
+        status: 'Входящие',
+        changedAt: new Date()
+      }))
     };
 
     if (req.file) {
-      docData.file = {
-        originalName: fixOriginalName(req.file),
-        fileName: req.file.filename,
-        path: `/uploads/documents/${req.file.filename}`
-      };
+      const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+      const fileDoc = await File.create({
+        originalName,
+        contentType: req.file.mimetype || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        data: req.file.buffer,
+        size: req.file.size
+      });
+      docData.file = { fileId: fileDoc._id, originalName };
     }
 
     const doc = await Document.create(docData);
-    const populated = await Document.findById(doc._id)
-      .populate('sender', POPULATE_SENDER);
+    const populated = await populateDoc(Document.findById(doc._id));
 
     res.status(201).json(populated);
   } catch (error) {
@@ -105,26 +164,25 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
 // GET /api/documents
 router.get('/', protect, async (req, res) => {
   try {
-    const { status, documentType, search, sort } = req.query;
+    const { documentType, search, sort, dateFrom, dateTo } = req.query;
     const filter = {
-      team: req.user.team,
+      departments: req.user.department,
       sender: { $ne: req.user._id }
     };
 
-    if (status) filter.status = status;
     if (documentType) filter.documentType = documentType;
     if (search) filter.title = { $regex: search, $options: 'i' };
+    if (dateFrom || dateTo) {
+      filter.deadline = {};
+      if (dateFrom) filter.deadline.$gte = new Date(dateFrom);
+      if (dateTo) filter.deadline.$lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+    }
 
     let sortObj = { deadline: 1 };
     if (sort === 'newest') sortObj = { createdAt: -1 };
     if (sort === 'oldest') sortObj = { createdAt: 1 };
 
-    const docs = await Document.find(filter)
-      .populate('sender', POPULATE_SENDER)
-      .populate('lastModifiedBy', POPULATE_MODIFIER)
-      .populate('comments.author', POPULATE_COMMENT_AUTHOR)
-      .sort(sortObj);
-
+    const docs = await populateDoc(Document.find(filter).sort(sortObj));
     res.json(docs);
   } catch (error) {
     res.status(500).json({ message: 'Ошибка получения документов' });
@@ -134,19 +192,13 @@ router.get('/', protect, async (req, res) => {
 // GET /api/documents/my
 router.get('/my', protect, async (req, res) => {
   try {
-    const { status, documentType, search } = req.query;
+    const { documentType, search } = req.query;
     const filter = { sender: req.user._id };
 
-    if (status) filter.status = status;
     if (documentType) filter.documentType = documentType;
     if (search) filter.title = { $regex: search, $options: 'i' };
 
-    const docs = await Document.find(filter)
-      .populate('sender', POPULATE_SENDER)
-      .populate('lastModifiedBy', POPULATE_MODIFIER)
-      .populate('comments.author', POPULATE_COMMENT_AUTHOR)
-      .sort({ createdAt: -1 });
-
+    const docs = await populateDoc(Document.find(filter).sort({ createdAt: -1 }));
     res.json(docs);
   } catch (error) {
     res.status(500).json({ message: 'Ошибка получения документов' });
@@ -160,13 +212,13 @@ router.get('/calendar', protect, async (req, res) => {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    const docs = await Document.find({
-      team: req.user.team,
-      sender: { $ne: req.user._id },
-      deadline: { $gte: startDate, $lte: endDate }
-    })
-      .populate('sender', POPULATE_SENDER)
-      .sort({ deadline: 1 });
+    const docs = await populateDoc(
+      Document.find({
+        departments: req.user.department,
+        sender: { $ne: req.user._id },
+        deadline: { $gte: startDate, $lte: endDate }
+      }).sort({ deadline: 1 })
+    );
 
     res.json(docs);
   } catch (error) {
@@ -177,11 +229,7 @@ router.get('/calendar', protect, async (req, res) => {
 // GET /api/documents/:id
 router.get('/:id', protect, async (req, res) => {
   try {
-    const doc = await Document.findById(req.params.id)
-      .populate('sender', POPULATE_SENDER)
-      .populate('lastModifiedBy', POPULATE_MODIFIER)
-      .populate('comments.author', POPULATE_COMMENT_AUTHOR);
-
+    const doc = await populateDoc(Document.findById(req.params.id));
     if (!doc) {
       return res.status(404).json({ message: 'Документ не найден' });
     }
@@ -203,39 +251,77 @@ router.put('/:id', protect, upload.single('file'), async (req, res) => {
       return res.status(403).json({ message: 'Только создатель может редактировать документ' });
     }
 
-    const { title, description, documentType, team, deadline } = req.body;
+    const { title, description, documentType, deadline } = req.body;
+    let departments = req.body.departments;
+    if (typeof departments === 'string') {
+      departments = departments.split(',').map(d => d.trim()).filter(Boolean);
+    }
+
     if (title) doc.title = title;
     if (description !== undefined) doc.description = description;
     if (documentType) doc.documentType = documentType;
-    if (team) doc.team = team;
     if (deadline) doc.deadline = new Date(deadline);
 
-    if (req.file) {
-      if (doc.file && doc.file.fileName) {
-        const oldPath = path.join(__dirname, '..', 'uploads', 'documents', doc.file.fileName);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-      doc.file = {
-        originalName: fixOriginalName(req.file),
-        fileName: req.file.filename,
-        path: `/uploads/documents/${req.file.filename}`
-      };
+    if (departments && departments.length > 0) {
+      // Update departments and sync departmentStatuses
+      const existingMap = {};
+      doc.departmentStatuses.forEach(ds => { existingMap[ds.department] = ds; });
+
+      doc.departments = departments;
+      doc.departmentStatuses = departments.map(dept => {
+        if (existingMap[dept]) return existingMap[dept];
+        return { department: dept, status: 'Входящие', changedAt: new Date() };
+      });
     }
 
-    if (doc.status === 'Доработка') {
-      doc.status = 'На рассмотрении';
-      doc.lastStatusChange = new Date();
+    if (req.file) {
+      const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+      const fileDoc = await File.create({
+        originalName,
+        contentType: req.file.mimetype || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        data: req.file.buffer,
+        size: req.file.size
+      });
+      doc.file = { fileId: fileDoc._id, originalName };
+    }
+
+    // If doc was in Доработка, move back to На рассмотрении
+    const hasDor = doc.departmentStatuses.some(ds => ds.status === 'Доработка');
+    if (hasDor) {
+      doc.departmentStatuses.forEach(ds => {
+        ds.status = 'На рассмотрении';
+        ds.changedAt = new Date();
+      });
     }
 
     await doc.save();
-    const populated = await Document.findById(doc._id)
-      .populate('sender', POPULATE_SENDER)
-      .populate('lastModifiedBy', POPULATE_MODIFIER)
-      .populate('comments.author', POPULATE_COMMENT_AUTHOR);
-
+    const populated = await populateDoc(Document.findById(doc._id));
     res.json(populated);
   } catch (error) {
     res.status(500).json({ message: 'Ошибка обновления документа' });
+  }
+});
+
+// DELETE /api/documents/:id
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const doc = await Document.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ message: 'Документ не найден' });
+    }
+    if (doc.sender.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Только создатель может удалить документ' });
+    }
+
+    // Delete associated file from MongoDB
+    if (doc.file?.fileId) {
+      await File.findByIdAndDelete(doc.file.fileId);
+    }
+
+    await Document.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Документ удалён' });
+  } catch (error) {
+    res.status(500).json({ message: 'Ошибка удаления документа' });
   }
 });
 
@@ -251,21 +337,51 @@ router.put('/:id/status', protect, async (req, res) => {
       return res.status(403).json({ message: 'Создатель не может менять статус своего документа' });
     }
 
-    if (req.user.team !== doc.team) {
+    const userDept = req.user.department;
+    if (!doc.departments.includes(userDept)) {
       return res.status(403).json({ message: 'Вы не являетесь получателем этого документа' });
     }
 
     const { status } = req.body;
-    doc.status = status;
+
+    if (status === 'Утверждено') {
+      // Only Президент can set Утверждено
+      if (userDept !== 'Президент') {
+        return res.status(403).json({ message: 'Только Президент может утвердить документ' });
+      }
+      // All departments must be on Согласование
+      const allAgreed = doc.departmentStatuses.every(ds => ds.status === 'Согласование');
+      if (!allAgreed) {
+        return res.status(400).json({ message: 'Все отделы должны дать согласование перед утверждением' });
+      }
+      // Set ALL to Утверждено
+      doc.departmentStatuses.forEach(ds => {
+        ds.status = 'Утверждено';
+        ds.changedBy = req.user._id;
+        ds.changedAt = new Date();
+      });
+    } else if (status === 'Доработка') {
+      // Set ALL departments to Доработка
+      doc.departmentStatuses.forEach(ds => {
+        ds.status = 'Доработка';
+        ds.changedBy = req.user._id;
+        ds.changedAt = new Date();
+      });
+    } else {
+      // Set only user's department status
+      const deptStatus = doc.departmentStatuses.find(ds => ds.department === userDept);
+      if (deptStatus) {
+        deptStatus.status = status;
+        deptStatus.changedBy = req.user._id;
+        deptStatus.changedAt = new Date();
+      }
+    }
+
     doc.lastModifiedBy = req.user._id;
     doc.lastStatusChange = new Date();
     await doc.save();
 
-    const populated = await Document.findById(doc._id)
-      .populate('sender', POPULATE_SENDER)
-      .populate('lastModifiedBy', POPULATE_MODIFIER)
-      .populate('comments.author', POPULATE_COMMENT_AUTHOR);
-
+    const populated = await populateDoc(Document.findById(doc._id));
     res.json(populated);
   } catch (error) {
     res.status(500).json({ message: 'Ошибка обновления статуса' });
@@ -287,11 +403,7 @@ router.post('/:id/comments', protect, async (req, res) => {
     doc.lastModifiedBy = req.user._id;
     await doc.save();
 
-    const populated = await Document.findById(doc._id)
-      .populate('sender', POPULATE_SENDER)
-      .populate('lastModifiedBy', POPULATE_MODIFIER)
-      .populate('comments.author', POPULATE_COMMENT_AUTHOR);
-
+    const populated = await populateDoc(Document.findById(doc._id));
     res.json(populated);
   } catch (error) {
     res.status(500).json({ message: 'Ошибка добавления комментария' });

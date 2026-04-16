@@ -21,9 +21,8 @@ const messageSchema = new mongoose.Schema({
     default: 'text'
   },
   file: {
-    originalName: String,
-    fileName: String,
-    path: String
+    fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
+    originalName: String
   },
   read: {
     type: Boolean,

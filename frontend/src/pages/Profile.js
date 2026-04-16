@@ -1,39 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import API from '../api/axios';
 import '../styles/Profile.css';
 
 const Profile = () => {
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
-    phone: '',
-    team: ''
+    phone: ''
   });
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
-  const [teams, setTeams] = useState([]);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [passwordMessage, setPasswordMessage] = useState({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Admin login modal
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminCreds, setAdminCreds] = useState({ login: '', password: '' });
+  const [adminError, setAdminError] = useState('');
 
   useEffect(() => {
     if (user) {
       setFormData({
         fullName: user.fullName || '',
         email: user.email || '',
-        phone: user.phone || '',
-        team: user.team || ''
+        phone: user.phone || ''
       });
     }
-    API.get('/auth/teams')
-      .then(res => setTeams(res.data))
-      .catch(() => {});
   }, [user]);
 
   const handleChange = (e) => {
@@ -105,7 +106,7 @@ const Profile = () => {
 
   const getAvatarUrl = () => {
     if (user?.avatar) {
-      return `http://localhost:5000${user.avatar}`;
+      return `http://localhost:5000/api/files/${user.avatar}`;
     }
     return null;
   };
@@ -116,6 +117,19 @@ const Profile = () => {
       return parts.map(p => p[0]).slice(0, 2).join('').toUpperCase();
     }
     return '';
+  };
+
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    setAdminError('');
+    try {
+      const { data } = await API.post('/admin/login', adminCreds);
+      localStorage.setItem('adminToken', data.token);
+      setShowAdminLogin(false);
+      navigate('/admin');
+    } catch (err) {
+      setAdminError(err.response?.data?.message || 'Неверные данные');
+    }
   };
 
   return (
@@ -188,18 +202,13 @@ const Profile = () => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="team">Команда</label>
-              <select
-                id="team"
-                name="team"
-                value={formData.team}
-                onChange={handleChange}
-                required
-              >
-                {teams.map((team) => (
-                  <option key={team} value={team}>{team}</option>
-                ))}
-              </select>
+              <label>Отдел</label>
+              <input
+                type="text"
+                value={user?.department || ''}
+                disabled
+                className="input-disabled"
+              />
             </div>
 
             <button type="submit" className="btn-primary" disabled={isLoading}>
@@ -256,8 +265,46 @@ const Profile = () => {
               Изменить пароль
             </button>
           </form>
+
+          <button className="btn-admin" onClick={() => setShowAdminLogin(true)}>
+            Админ панель
+          </button>
         </div>
       </div>
+
+      {/* Admin login modal */}
+      {showAdminLogin && (
+        <div className="modal-overlay" onClick={() => setShowAdminLogin(false)}>
+          <div className="modal-content modal-small" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowAdminLogin(false)}>&times;</button>
+            <div className="modal-body">
+              <h2>Вход в Админ панель</h2>
+              {adminError && <div className="create-message error">{adminError}</div>}
+              <form onSubmit={handleAdminLogin} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+                <div className="form-group">
+                  <label>Логин</label>
+                  <input
+                    type="text"
+                    value={adminCreds.login}
+                    onChange={e => setAdminCreds({ ...adminCreds, login: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Пароль</label>
+                  <input
+                    type="password"
+                    value={adminCreds.password}
+                    onChange={e => setAdminCreds({ ...adminCreds, password: e.target.value })}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn-primary">Войти</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

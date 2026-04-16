@@ -10,6 +10,9 @@ import Calendar from './pages/Calendar';
 import CreateDocument from './pages/CreateDocument';
 import MyDocuments from './pages/MyDocuments';
 import Chat from './pages/Chat';
+import Statistics from './pages/Statistics';
+import Archive from './pages/Archive';
+import AdminPanel from './pages/AdminPanel';
 import './App.css';
 
 const AppLayout = ({ children }) => {
@@ -40,7 +43,10 @@ function App() {
           <Route path="/create" element={<PrivateRoute><AppLayout><CreateDocument /></AppLayout></PrivateRoute>} />
           <Route path="/my-documents" element={<PrivateRoute><AppLayout><MyDocuments /></AppLayout></PrivateRoute>} />
           <Route path="/chat" element={<PrivateRoute><AppLayout><Chat /></AppLayout></PrivateRoute>} />
+          <Route path="/statistics" element={<PrivateRoute><AppLayout><Statistics /></AppLayout></PrivateRoute>} />
+          <Route path="/archive" element={<PrivateRoute><AppLayout><Archive /></AppLayout></PrivateRoute>} />
           <Route path="/profile" element={<PrivateRoute><AppLayout><Profile /></AppLayout></PrivateRoute>} />
+          <Route path="/admin" element={<PrivateRoute><AppLayout><AdminPanel /></AppLayout></PrivateRoute>} />
 
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

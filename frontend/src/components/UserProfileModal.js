@@ -17,7 +17,7 @@ const UserProfileModal = ({ userId, onClose }) => {
 
   if (!userId) return null;
 
-  const getAvatarUrl = () => profile?.avatar ? `http://localhost:5000${profile.avatar}` : null;
+  const getAvatarUrl = () => profile?.avatar ? `http://localhost:5000/api/files/${profile.avatar}` : null;
   const getInitials = () => {
     if (!profile?.fullName) return '?';
     const parts = profile.fullName.split(' ');
@@ -42,8 +42,8 @@ const UserProfileModal = ({ userId, onClose }) => {
             <h2 className="user-profile-name">{profile.fullName}</h2>
             <div className="user-profile-details">
               <div className="user-profile-row">
-                <span className="user-profile-label">Команда</span>
-                <span className="user-profile-value">{profile.team}</span>
+                <span className="user-profile-label">Отдел</span>
+                <span className="user-profile-value">{profile.department}</span>
               </div>
               <div className="user-profile-row">
                 <span className="user-profile-label">Email</span>

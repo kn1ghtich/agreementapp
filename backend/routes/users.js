@@ -1,31 +1,20 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const File = require('../models/File');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Multer config for avatar uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/avatars/');
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `avatar-${req.user._id}-${Date.now()}${ext}`);
-  }
-});
-
+// Multer with memory storage for avatar uploads
+const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
+    if (mimetype) {
       cb(null, true);
     } else {
       cb(new Error('Допустимы только изображения (jpg, png, webp)'));
@@ -33,7 +22,7 @@ const upload = multer({
   }
 });
 
-// GET /api/users/me — get current user profile
+// GET /api/users/me
 router.get('/me', protect, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -43,10 +32,10 @@ router.get('/me', protect, async (req, res) => {
   }
 });
 
-// GET /api/users/:id — get any user's profile
+// GET /api/users/:id
 router.get('/:id', protect, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('fullName email phone team avatar');
+    const user = await User.findById(req.params.id).select('fullName email phone department avatar');
     if (!user) {
       return res.status(404).json({ message: 'Пользователь не найден' });
     }
@@ -56,10 +45,10 @@ router.get('/:id', protect, async (req, res) => {
   }
 });
 
-// PUT /api/users/me — update current user profile
+// PUT /api/users/me — update profile (no department change)
 router.put('/me', protect, async (req, res) => {
   try {
-    const { fullName, email, phone, team } = req.body;
+    const { fullName, email, phone } = req.body;
     const user = await User.findById(req.user._id);
 
     if (email && email !== user.email) {
@@ -72,7 +61,6 @@ router.put('/me', protect, async (req, res) => {
 
     if (fullName) user.fullName = fullName;
     if (phone !== undefined) user.phone = phone;
-    if (team) user.team = team;
 
     const updatedUser = await user.save();
     res.json(updatedUser);
@@ -85,7 +73,7 @@ router.put('/me', protect, async (req, res) => {
   }
 });
 
-// PUT /api/users/me/password — change password
+// PUT /api/users/me/password
 router.put('/me/password', protect, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -104,7 +92,7 @@ router.put('/me/password', protect, async (req, res) => {
   }
 });
 
-// POST /api/users/me/avatar — upload avatar
+// POST /api/users/me/avatar — upload avatar to MongoDB
 router.post('/me/avatar', protect, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) {
@@ -113,17 +101,23 @@ router.post('/me/avatar', protect, upload.single('avatar'), async (req, res) => 
 
     const user = await User.findById(req.user._id);
 
+    // Delete old avatar file from MongoDB
     if (user.avatar) {
-      const oldPath = user.avatar.replace(/^\//, '');
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath);
-      }
+      await File.findByIdAndDelete(user.avatar);
     }
 
-    user.avatar = `/uploads/avatars/${req.file.filename}`;
+    // Save new avatar to MongoDB
+    const fileDoc = await File.create({
+      originalName: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
+      contentType: req.file.mimetype,
+      data: req.file.buffer,
+      size: req.file.size
+    });
+
+    user.avatar = fileDoc._id;
     await user.save();
 
-    res.json({ avatar: user.avatar });
+    res.json({ avatar: fileDoc._id });
   } catch (error) {
     res.status(500).json({ message: 'Ошибка загрузки аватара' });
   }

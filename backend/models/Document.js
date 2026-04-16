@@ -16,6 +16,17 @@ const commentSchema = new mongoose.Schema({
   }
 });
 
+const departmentStatusSchema = new mongoose.Schema({
+  department: { type: String, required: true },
+  status: {
+    type: String,
+    enum: ['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Утверждено'],
+    default: 'Входящие'
+  },
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  changedAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 const documentSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -36,24 +47,21 @@ const documentSchema = new mongoose.Schema({
     ]
   },
   file: {
-    originalName: String,
-    fileName: String,
-    path: String
+    fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
+    originalName: String
   },
   sender: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  team: {
-    type: String,
-    required: [true, 'Выберите команду-получателя']
+  senderDepartment: {
+    type: String
   },
-  status: {
-    type: String,
-    enum: ['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Выполнено'],
-    default: 'Входящие'
-  },
+  departments: [{
+    type: String
+  }],
+  departmentStatuses: [departmentStatusSchema],
   deadline: {
     type: Date,
     required: [true, 'Укажите срок рассмотрения']
@@ -68,7 +76,19 @@ const documentSchema = new mongoose.Schema({
     default: Date.now
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+documentSchema.virtual('status').get(function() {
+  if (!this.departmentStatuses || this.departmentStatuses.length === 0) return 'Входящие';
+  const statuses = this.departmentStatuses.map(ds => ds.status);
+  if (statuses.some(s => s === 'Доработка')) return 'Доработка';
+  if (statuses.every(s => s === 'Утверждено')) return 'Утверждено';
+  if (statuses.every(s => s === 'Согласование')) return 'Согласование';
+  if (statuses.some(s => s === 'На рассмотрении' || s === 'Согласование')) return 'На рассмотрении';
+  return 'Входящие';
 });
 
 module.exports = mongoose.model('Document', documentSchema);

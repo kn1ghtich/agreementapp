@@ -33,11 +33,12 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Введите номер телефона'],
     trim: true
   },
-  team: {
+  department: {
     type: String,
-    required: [true, 'Выберите команду'],
+    required: [true, 'Выберите отдел'],
     enum: {
       values: [
+        'Президент',
         'Вице-президент',
         'Главный бухгалтер',
         'Главный экономист',
@@ -47,12 +48,13 @@ const userSchema = new mongoose.Schema({
         'Руководитель службы развития цифровизации и искусственного интеллекта',
         'Юрист'
       ],
-      message: 'Выберите корректную команду'
+      message: 'Выберите корректный отдел'
     }
   },
   avatar: {
-    type: String,
-    default: ''
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'File',
+    default: null
   }
 }, {
   timestamps: true

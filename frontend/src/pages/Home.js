@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import API from '../api/axios';
 import DocumentModal from '../components/DocumentModal';
 import { DOCUMENT_COLORS } from '../components/DocumentModal';
 import '../styles/Home.css';
 
-const STATUSES = ['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Выполнено'];
+const STATUSES = ['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Утверждено'];
 
 const Home = () => {
+  const { user } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [view, setView] = useState('kanban');
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
-  const [filterDeadline, setFilterDeadline] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [docTypes, setDocTypes] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,7 +26,10 @@ const Home = () => {
 
   const fetchDocuments = async () => {
     try {
-      const { data } = await API.get('/documents');
+      const params = {};
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+      const { data } = await API.get('/documents', { params });
       setDocuments(data);
     } catch (err) {
       console.error(err);
@@ -32,42 +38,33 @@ const Home = () => {
     }
   };
 
+  useEffect(() => {
+    if (!loading) fetchDocuments();
+  }, [dateFrom, dateTo]);
+
   const handleDocUpdate = (updatedDoc) => {
     setDocuments(prev => prev.map(d => d._id === updatedDoc._id ? updatedDoc : d));
     setSelectedDoc(updatedDoc);
   };
 
+  const getUserDeptStatus = (doc) => {
+    return doc.departmentStatuses?.find(ds => ds.department === user.department)?.status || 'Входящие';
+  };
+
   const isOverdue = (doc) => {
-    return new Date(doc.deadline) < new Date() && doc.status !== 'Выполнено';
+    return new Date(doc.deadline) < new Date() && doc.status !== 'Утверждено';
   };
 
   const filteredDocs = documents.filter(doc => {
     if (search && !doc.title.toLowerCase().includes(search.toLowerCase())) return false;
     if (filterType && doc.documentType !== filterType) return false;
-    if (filterDeadline) {
-      const deadlineDate = new Date(doc.deadline);
-      const today = new Date();
-      if (filterDeadline === 'today') {
-        if (deadlineDate.toDateString() !== today.toDateString()) return false;
-      } else if (filterDeadline === 'week') {
-        const weekLater = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-        if (deadlineDate > weekLater || deadlineDate < today) return false;
-      } else if (filterDeadline === 'month') {
-        const monthLater = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-        if (deadlineDate > monthLater || deadlineDate < today) return false;
-      } else if (filterDeadline === 'overdue') {
-        if (!isOverdue(doc)) return false;
-      }
-    }
     return true;
   });
 
   const getKanbanDocs = (status) => {
-    let docs = filteredDocs.filter(d => d.status === status);
-    if (status === 'Выполнено') {
-      docs = docs.filter(d => !isOverdue(d));
-    }
-    return docs.sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+    return filteredDocs
+      .filter(d => getUserDeptStatus(d) === status)
+      .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
   };
 
   const formatDate = (date) => {
@@ -124,13 +121,28 @@ const Home = () => {
               <option key={t.name} value={t.name}>{t.name}</option>
             ))}
           </select>
-          <select value={filterDeadline} onChange={e => setFilterDeadline(e.target.value)} className="filter-select">
-            <option value="">Все сроки</option>
-            <option value="today">Сегодня</option>
-            <option value="week">Эта неделя</option>
-            <option value="month">Этот месяц</option>
-            <option value="overdue">Просроченные</option>
-          </select>
+          <div className="date-range">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="date-input"
+              placeholder="С"
+            />
+            <span className="date-separator">—</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="date-input"
+              placeholder="До"
+            />
+            {(dateFrom || dateTo) && (
+              <button className="date-clear" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+                &times;
+              </button>
+            )}
+          </div>
         </div>
         <div className="view-toggle">
           <button className={view === 'kanban' ? 'active' : ''} onClick={() => setView('kanban')}>
@@ -190,8 +202,8 @@ const Home = () => {
                   </td>
                   <td className="td-title">{doc.title}</td>
                   <td>
-                    <span className="status-badge" style={{ background: getStatusColor(doc.status) }}>
-                      {doc.status}
+                    <span className="status-badge" style={{ background: getStatusColor(getUserDeptStatus(doc)) }}>
+                      {getUserDeptStatus(doc)}
                     </span>
                   </td>
                   <td className={isOverdue(doc) ? 'overdue-text' : ''}>{formatDate(doc.deadline)}</td>
@@ -224,7 +236,7 @@ function getStatusColor(status) {
     'На рассмотрении': '#FB8C00',
     'Доработка': '#E53935',
     'Согласование': '#8E24AA',
-    'Выполнено': '#43A047'
+    'Утверждено': '#43A047'
   };
   return colors[status] || '#666';
 }

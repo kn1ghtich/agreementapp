@@ -255,3 +255,42 @@
   color: #aaa;
   padding: 40px !important;
 }
+
+/* Date Range Filter */
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-input {
+  padding: 10px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+}
+
+.date-input:focus {
+  border-color: #1a73e8;
+}
+
+.date-separator {
+  color: #aaa;
+  font-size: 14px;
+}
+
+.date-clear {
+  padding: 6px 10px;
+  border: none;
+  background: #eee;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  color: #666;
+}
+
+.date-clear:hover {
+  background: #ddd;
+}

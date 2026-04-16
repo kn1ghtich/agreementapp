@@ -18,23 +18,37 @@ const DOCUMENT_COLORS = {
   'Иные внутренние нормативные документы': '#6D4C41'
 };
 
-const STATUSES = ['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Выполнено'];
+const STATUSES = ['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Утверждено'];
 
 const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
   const { user } = useAuth();
-  const [status, setStatus] = useState(document.status);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [viewProfileId, setViewProfileId] = useState(null);
 
-  const isRecipient = !isSender && user.team === document.team;
-  const isOverdue = new Date(document.deadline) < new Date() && document.status !== 'Выполнено';
+  const userDeptStatus = document.departmentStatuses?.find(
+    ds => ds.department === user.department
+  );
+  const currentStatus = userDeptStatus?.status || document.status || 'Входящие';
+  const isRecipient = !isSender && document.departments?.includes(user.department);
+  const isOverdue = new Date(document.deadline) < new Date() && document.status !== 'Утверждено';
+  const isPresident = user.department === 'Президент';
+
+  const canSetStatus = (s) => {
+    if (!isRecipient || loading) return false;
+    if (s === 'Утверждено') {
+      if (!isPresident) return false;
+      const allAgreed = document.departmentStatuses?.every(ds => ds.status === 'Согласование');
+      return allAgreed;
+    }
+    return true;
+  };
 
   const handleStatusChange = async (newStatus) => {
+    if (!canSetStatus(newStatus)) return;
     setLoading(true);
     try {
       const { data } = await API.put(`/documents/${document._id}/status`, { status: newStatus });
-      setStatus(newStatus);
       if (onUpdate) onUpdate(data);
     } catch (err) {
       alert(err.response?.data?.message || 'Ошибка');
@@ -59,8 +73,8 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
   };
 
   const handleDownload = () => {
-    if (document.file?.path) {
-      window.open(`http://localhost:5000${document.file.path}`, '_blank');
+    if (document.file?.fileId) {
+      window.open(`http://localhost:5000/api/files/${document.file.fileId}/download`, '_blank');
     }
   };
 
@@ -88,10 +102,10 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
           {STATUSES.map(s => (
             <button
               key={s}
-              className={`status-btn ${status === s ? 'active' : ''} ${s === 'Выполнено' ? 'done' : ''}`}
-              onClick={() => isRecipient && handleStatusChange(s)}
-              disabled={!isRecipient || loading}
-              style={status === s ? { background: getStatusColor(s) } : {}}
+              className={`status-btn ${currentStatus === s ? 'active' : ''} ${s === 'Утверждено' ? 'done' : ''}`}
+              onClick={() => canSetStatus(s) && handleStatusChange(s)}
+              disabled={!canSetStatus(s)}
+              style={currentStatus === s ? { background: getStatusColor(s) } : {}}
             >
               {s}
             </button>
@@ -127,7 +141,7 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
               onClick={() => setViewProfileId(document.sender?._id)}
             >
               {document.sender?.avatar ? (
-                <img src={`http://localhost:5000${document.sender.avatar}`} alt="" className="sender-avatar" />
+                <img src={`http://localhost:5000/api/files/${document.sender.avatar}`} alt="" className="sender-avatar" />
               ) : (
                 <div className="sender-avatar-placeholder">
                   {getInitials(document.sender?.fullName)}
@@ -136,6 +150,23 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
               <span className="clickable-name">{senderName}</span>
             </div>
           </div>
+
+          {/* Department statuses */}
+          {document.departmentStatuses && document.departmentStatuses.length > 0 && (
+            <div className="modal-section">
+              <h4>Статусы по отделам</h4>
+              <div className="dept-statuses-list">
+                {document.departmentStatuses.map((ds, i) => (
+                  <div key={i} className="dept-status-row">
+                    <span className="dept-status-name">{ds.department}</span>
+                    <span className="status-badge" style={{ background: getStatusColor(ds.status) }}>
+                      {ds.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {document.file && (
             <div className="modal-section">
@@ -216,7 +247,7 @@ function getStatusColor(status) {
     'На рассмотрении': '#FB8C00',
     'Доработка': '#E53935',
     'Согласование': '#8E24AA',
-    'Выполнено': '#43A047'
+    'Утверждено': '#43A047'
   };
   return colors[status] || '#666';
 }

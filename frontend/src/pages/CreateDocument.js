@@ -9,12 +9,12 @@ const CreateDocument = () => {
     title: '',
     description: '',
     documentType: '',
-    team: '',
+    departments: [],
     deadline: ''
   });
   const [file, setFile] = useState(null);
   const [docTypes, setDocTypes] = useState([]);
-  const [teams, setTeams] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -23,15 +23,24 @@ const CreateDocument = () => {
   useEffect(() => {
     Promise.all([
       API.get('/documents/types'),
-      API.get('/auth/teams')
-    ]).then(([typesRes, teamsRes]) => {
+      API.get('/auth/departments')
+    ]).then(([typesRes, deptsRes]) => {
       setDocTypes(typesRes.data);
-      setTeams(teamsRes.data);
+      setDepartments(deptsRes.data);
     }).catch(() => {});
   }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleDeptToggle = (dept) => {
+    setFormData(prev => ({
+      ...prev,
+      departments: prev.departments.includes(dept)
+        ? prev.departments.filter(d => d !== dept)
+        : [...prev.departments, dept]
+    }));
   };
 
   const handleFileChange = (e) => {
@@ -50,6 +59,12 @@ const CreateDocument = () => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (formData.departments.length === 0) {
+      setError('Выберите хотя бы один отдел-получатель');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -57,7 +72,7 @@ const CreateDocument = () => {
       data.append('title', formData.title);
       data.append('description', formData.description);
       data.append('documentType', formData.documentType);
-      data.append('team', formData.team);
+      data.append('departments', formData.departments.join(','));
       data.append('deadline', formData.deadline);
       if (file) data.append('file', file);
 
@@ -66,7 +81,7 @@ const CreateDocument = () => {
       });
 
       setSuccess('Документ успешно создан!');
-      setFormData({ title: '', description: '', documentType: '', team: '', deadline: '' });
+      setFormData({ title: '', description: '', documentType: '', departments: [], deadline: '' });
       setFile(null);
 
       setTimeout(() => navigate('/my-documents'), 1500);
@@ -136,33 +151,33 @@ const CreateDocument = () => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="team">Команда-получатель *</label>
-              <select
-                id="team"
-                name="team"
-                value={formData.team}
+              <label htmlFor="deadline">Срок рассмотрения *</label>
+              <input
+                type="date"
+                id="deadline"
+                name="deadline"
+                value={formData.deadline}
                 onChange={handleChange}
                 required
-              >
-                <option value="">Выберите команду</option>
-                {teams.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+                min={new Date().toISOString().split('T')[0]}
+              />
             </div>
           </div>
 
           <div className="form-group">
-            <label htmlFor="deadline">Срок рассмотрения *</label>
-            <input
-              type="date"
-              id="deadline"
-              name="deadline"
-              value={formData.deadline}
-              onChange={handleChange}
-              required
-              min={new Date().toISOString().split('T')[0]}
-            />
+            <label>Отделы-получатели * ({formData.departments.length} выбрано)</label>
+            <div className="departments-checklist">
+              {departments.map(dept => (
+                <label key={dept} className={`dept-checkbox ${formData.departments.includes(dept) ? 'checked' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={formData.departments.includes(dept)}
+                    onChange={() => handleDeptToggle(dept)}
+                  />
+                  <span>{dept}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div className="form-group">
