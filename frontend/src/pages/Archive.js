@@ -7,7 +7,10 @@ import '../styles/Archive.css';
 const Archive = () => {
   const [documents, setDocuments] = useState([]);
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('');
+  const [filterType, setFilterType] = useState([]);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [showTypeFilter, setShowTypeFilter] = useState(false);
+  const [showStatusFilter, setShowStatusFilter] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [docTypes, setDocTypes] = useState([]);
@@ -24,7 +27,6 @@ const Archive = () => {
     try {
       const params = {};
       if (search) params.search = search;
-      if (filterType) params.documentType = filterType;
       if (dateFrom) params.dateFrom = dateFrom;
       if (dateTo) params.dateTo = dateTo;
       const { data } = await API.get('/documents/archive', { params });
@@ -38,7 +40,19 @@ const Archive = () => {
 
   useEffect(() => {
     if (!loading) fetchDocuments();
-  }, [filterType, dateFrom, dateTo]);
+  }, [dateFrom, dateTo]);
+
+  const handleFilterTypeToggle = (type) => {
+    setFilterType(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  const filteredDocuments = documents.filter(doc => {
+    if (filterType.length > 0 && !filterType.includes(doc.documentType)) return false;
+    if (filterStatus && doc.status !== filterStatus) return false;
+    return true;
+  });
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -80,12 +94,66 @@ const Archive = () => {
           <button type="submit" className="btn-search">Найти</button>
         </form>
 
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="filter-select">
-          <option value="">Все типы</option>
-          {docTypes.map(t => (
-            <option key={t.name} value={t.name}>{t.name}</option>
-          ))}
-        </select>
+        <div className="filter-type-wrapper">
+          <button
+            className={`filter-type-btn ${filterType.length > 0 ? 'active' : ''}`}
+            onClick={() => setShowTypeFilter(!showTypeFilter)}
+          >
+            {filterType.length === 0 ? 'Все типы' : `Типы (${filterType.length})`}
+            <span className="filter-arrow">{showTypeFilter ? '▲' : '▼'}</span>
+          </button>
+          {showTypeFilter && (
+            <div className="filter-type-dropdown">
+              {filterType.length > 0 && (
+                <button className="filter-clear-btn" onClick={() => setFilterType([])}>
+                  Сбросить
+                </button>
+              )}
+              {docTypes.map(t => (
+                <label key={t.name} className={`filter-type-item ${filterType.includes(t.name) ? 'checked' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={filterType.includes(t.name)}
+                    onChange={() => handleFilterTypeToggle(t.name)}
+                  />
+                  <span className="filter-type-dot" style={{ background: t.color }}></span>
+                  <span>{t.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="filter-type-wrapper">
+          <button
+            className={`filter-type-btn ${filterStatus ? 'active' : ''}`}
+            onClick={() => setShowStatusFilter(!showStatusFilter)}
+          >
+            {filterStatus || 'Все статусы'}
+            <span className="filter-arrow">{showStatusFilter ? '▲' : '▼'}</span>
+          </button>
+          {showStatusFilter && (
+            <div className="filter-type-dropdown">
+              <label
+                className={`filter-type-item ${!filterStatus ? 'checked' : ''}`}
+                onClick={() => { setFilterStatus(''); setShowStatusFilter(false); }}
+              >
+                <span className="filter-type-dot" style={{ background: '#999' }}></span>
+                <span>Все статусы</span>
+              </label>
+              {['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Утверждено'].map(s => (
+                <label
+                  key={s}
+                  className={`filter-type-item ${filterStatus === s ? 'checked' : ''}`}
+                  onClick={() => { setFilterStatus(s); setShowStatusFilter(false); }}
+                >
+                  <span className="filter-type-dot" style={{ background: getStatusColor(s) }}></span>
+                  <span>{s}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="date-range">
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="date-input" />
@@ -116,7 +184,7 @@ const Archive = () => {
               </tr>
             </thead>
             <tbody>
-              {documents.map(doc => (
+              {filteredDocuments.map(doc => (
                 <tr key={doc._id} onClick={() => setSelectedDoc(doc)} className="clickable-row">
                   <td>
                     <span
@@ -138,7 +206,7 @@ const Archive = () => {
                   <td>{doc.sender?.fullName}</td>
                 </tr>
               ))}
-              {documents.length === 0 && (
+              {filteredDocuments.length === 0 && (
                 <tr><td colSpan="7" className="empty-row">Документы не найдены</td></tr>
               )}
             </tbody>

@@ -12,7 +12,8 @@ const Home = () => {
   const [documents, setDocuments] = useState([]);
   const [view, setView] = useState('kanban');
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('');
+  const [filterType, setFilterType] = useState([]);
+  const [showTypeFilter, setShowTypeFilter] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [docTypes, setDocTypes] = useState([]);
@@ -55,9 +56,15 @@ const Home = () => {
     return new Date(doc.deadline) < new Date() && doc.status !== 'Утверждено';
   };
 
+  const handleFilterTypeToggle = (type) => {
+    setFilterType(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
   const filteredDocs = documents.filter(doc => {
     if (search && !doc.title.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterType && doc.documentType !== filterType) return false;
+    if (filterType.length > 0 && !filterType.includes(doc.documentType)) return false;
     return true;
   });
 
@@ -115,12 +122,35 @@ const Home = () => {
             onChange={e => setSearch(e.target.value)}
             className="search-input"
           />
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="filter-select">
-            <option value="">Все типы</option>
-            {docTypes.map(t => (
-              <option key={t.name} value={t.name}>{t.name}</option>
-            ))}
-          </select>
+          <div className="filter-type-wrapper">
+            <button
+              className={`filter-type-btn ${filterType.length > 0 ? 'active' : ''}`}
+              onClick={() => setShowTypeFilter(!showTypeFilter)}
+            >
+              {filterType.length === 0 ? 'Все типы' : `Типы (${filterType.length})`}
+              <span className="filter-arrow">{showTypeFilter ? '▲' : '▼'}</span>
+            </button>
+            {showTypeFilter && (
+              <div className="filter-type-dropdown">
+                {filterType.length > 0 && (
+                  <button className="filter-clear-btn" onClick={() => setFilterType([])}>
+                    Сбросить
+                  </button>
+                )}
+                {docTypes.map(t => (
+                  <label key={t.name} className={`filter-type-item ${filterType.includes(t.name) ? 'checked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={filterType.includes(t.name)}
+                      onChange={() => handleFilterTypeToggle(t.name)}
+                    />
+                    <span className="filter-type-dot" style={{ background: t.color }}></span>
+                    <span>{t.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="date-range">
             <input
               type="date"

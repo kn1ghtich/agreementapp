@@ -251,6 +251,10 @@ router.put('/:id', protect, upload.single('file'), async (req, res) => {
       return res.status(403).json({ message: 'Только создатель может редактировать документ' });
     }
 
+    if (doc.status === 'Утверждено') {
+      return res.status(403).json({ message: 'Утверждённый документ нельзя редактировать' });
+    }
+
     const { title, description, documentType, deadline } = req.body;
     let departments = req.body.departments;
     if (typeof departments === 'string') {
@@ -313,6 +317,10 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(403).json({ message: 'Только создатель может удалить документ' });
     }
 
+    if (doc.status === 'Утверждено') {
+      return res.status(403).json({ message: 'Утверждённый документ нельзя удалить' });
+    }
+
     // Delete associated file from MongoDB
     if (doc.file?.fileId) {
       await File.findByIdAndDelete(doc.file.fileId);
@@ -331,6 +339,10 @@ router.put('/:id/status', protect, async (req, res) => {
     const doc = await Document.findById(req.params.id);
     if (!doc) {
       return res.status(404).json({ message: 'Документ не найден' });
+    }
+
+    if (doc.status === 'Утверждено') {
+      return res.status(403).json({ message: 'Статус утверждённого документа нельзя изменить' });
     }
 
     if (doc.sender.toString() === req.user._id.toString()) {

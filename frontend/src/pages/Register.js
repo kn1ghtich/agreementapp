@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import API from '../api/axios';
 import '../styles/Auth.css';
 
 const Register = () => {
@@ -10,21 +9,13 @@ const Register = () => {
     email: '',
     fullName: '',
     phone: '',
-    department: '',
     password: '',
     confirmPassword: ''
   });
-  const [departments, setDepartments] = useState([]);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    API.get('/auth/departments')
-      .then(res => setDepartments(res.data))
-      .catch(() => {});
-  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -102,34 +93,17 @@ const Register = () => {
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="phone">Телефон *</label>
-              <input
-                type="tel"
-                id="phone"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                placeholder="+7 (777) 123-45-67"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="department">Отдел *</label>
-              <select
-                id="department"
-                name="department"
-                value={formData.department}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Выберите отдел</option>
-                {departments.map((dept) => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
-            </div>
+          <div className="form-group">
+            <label htmlFor="phone">Телефон *</label>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              placeholder="+7 (777) 123-45-67"
+              required
+            />
           </div>
 
           <div className="form-row">

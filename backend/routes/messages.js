@@ -99,6 +99,19 @@ router.get('/chats', protect, async (req, res) => {
   }
 });
 
+// GET /api/messages/unread-count
+router.get('/unread-count', protect, async (req, res) => {
+  try {
+    const count = await Message.countDocuments({
+      receiver: req.user._id,
+      read: false
+    });
+    res.json({ count });
+  } catch (error) {
+    res.status(500).json({ message: 'Ошибка получения непрочитанных' });
+  }
+});
+
 // GET /api/messages/:userId
 router.get('/:userId', protect, async (req, res) => {
   try {

@@ -18,6 +18,7 @@ const CreateDocument = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -92,8 +93,6 @@ const CreateDocument = () => {
     }
   };
 
-  const selectedTypeColor = docTypes.find(t => t.name === formData.documentType)?.color;
-
   return (
     <div className="create-container">
       <h1 className="page-title">Создание документа</h1>
@@ -130,24 +129,41 @@ const CreateDocument = () => {
 
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="documentType">Тип документа *</label>
-              <select
-                id="documentType"
-                name="documentType"
-                value={formData.documentType}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Выберите тип</option>
-                {docTypes.map(t => (
-                  <option key={t.name} value={t.name}>{t.name}</option>
-                ))}
-              </select>
-              {selectedTypeColor && (
-                <div className="type-preview" style={{ background: selectedTypeColor }}>
-                  {formData.documentType}
-                </div>
-              )}
+              <label>Тип документа *</label>
+              <div className="create-type-wrapper">
+                <button
+                  type="button"
+                  className={`create-type-btn ${!formData.documentType ? 'placeholder' : ''}`}
+                  onClick={() => setShowTypeDropdown(!showTypeDropdown)}
+                >
+                  {formData.documentType ? (
+                    <>
+                      <span className="filter-type-dot" style={{ background: DOCUMENT_COLORS[formData.documentType] }}></span>
+                      <span>{formData.documentType}</span>
+                    </>
+                  ) : (
+                    <span>Выберите тип</span>
+                  )}
+                  <span className="filter-arrow">{showTypeDropdown ? '▲' : '▼'}</span>
+                </button>
+                {showTypeDropdown && (
+                  <div className="create-type-dropdown">
+                    {docTypes.map(t => (
+                      <label
+                        key={t.name}
+                        className={`filter-type-item ${formData.documentType === t.name ? 'checked' : ''}`}
+                        onClick={() => {
+                          setFormData(prev => ({ ...prev, documentType: t.name }));
+                          setShowTypeDropdown(false);
+                        }}
+                      >
+                        <span className="filter-type-dot" style={{ background: t.color }}></span>
+                        <span>{t.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="form-group">

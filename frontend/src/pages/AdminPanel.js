@@ -4,6 +4,7 @@ import axios from 'axios';
 import '../styles/AdminPanel.css';
 
 const DEPARTMENTS = [
+  'Нет отдела',
   'Президент',
   'Вице-президент',
   'Главный бухгалтер',

@@ -35,9 +35,10 @@ const userSchema = new mongoose.Schema({
   },
   department: {
     type: String,
-    required: [true, 'Выберите отдел'],
+    default: 'Нет отдела',
     enum: {
       values: [
+        'Нет отдела',
         'Президент',
         'Вице-президент',
         'Главный бухгалтер',

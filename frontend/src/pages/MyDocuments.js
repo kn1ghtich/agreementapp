@@ -7,8 +7,10 @@ import '../styles/MyDocuments.css';
 const MyDocuments = () => {
   const [documents, setDocuments] = useState([]);
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('');
+  const [filterType, setFilterType] = useState([]);
   const [filterStatus, setFilterStatus] = useState('');
+  const [showTypeFilter, setShowTypeFilter] = useState(false);
+  const [showStatusFilter, setShowStatusFilter] = useState(false);
   const [docTypes, setDocTypes] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [editDoc, setEditDoc] = useState(null);
@@ -44,7 +46,7 @@ const MyDocuments = () => {
 
   const filteredDocs = documents.filter(doc => {
     if (search && !doc.title.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterType && doc.documentType !== filterType) return false;
+    if (filterType.length > 0 && !filterType.includes(doc.documentType)) return false;
     if (filterStatus && doc.status !== filterStatus) return false;
     return true;
   });
@@ -80,6 +82,12 @@ const MyDocuments = () => {
 
   const handleEditChange = (e) => {
     setEditData({ ...editData, [e.target.name]: e.target.value });
+  };
+
+  const handleFilterTypeToggle = (type) => {
+    setFilterType(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
   };
 
   const handleEditDeptToggle = (dept) => {
@@ -152,20 +160,65 @@ const MyDocuments = () => {
           onChange={e => setSearch(e.target.value)}
           className="search-input"
         />
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="filter-select">
-          <option value="">Все типы</option>
-          {docTypes.map(t => (
-            <option key={t.name} value={t.name}>{t.name}</option>
-          ))}
-        </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="filter-select">
-          <option value="">Все статусы</option>
-          <option value="Входящие">Входящие</option>
-          <option value="На рассмотрении">На рассмотрении</option>
-          <option value="Доработка">Доработка</option>
-          <option value="Согласование">Согласование</option>
-          <option value="Утверждено">Утверждено</option>
-        </select>
+        <div className="filter-type-wrapper">
+          <button
+            className={`filter-type-btn ${filterType.length > 0 ? 'active' : ''}`}
+            onClick={() => setShowTypeFilter(!showTypeFilter)}
+          >
+            {filterType.length === 0 ? 'Все типы' : `Типы (${filterType.length})`}
+            <span className="filter-arrow">{showTypeFilter ? '▲' : '▼'}</span>
+          </button>
+          {showTypeFilter && (
+            <div className="filter-type-dropdown">
+              {filterType.length > 0 && (
+                <button className="filter-clear-btn" onClick={() => setFilterType([])}>
+                  Сбросить
+                </button>
+              )}
+              {docTypes.map(t => (
+                <label key={t.name} className={`filter-type-item ${filterType.includes(t.name) ? 'checked' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={filterType.includes(t.name)}
+                    onChange={() => handleFilterTypeToggle(t.name)}
+                  />
+                  <span className="filter-type-dot" style={{ background: t.color }}></span>
+                  <span>{t.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="filter-type-wrapper">
+          <button
+            className={`filter-type-btn ${filterStatus ? 'active' : ''}`}
+            onClick={() => setShowStatusFilter(!showStatusFilter)}
+          >
+            {filterStatus || 'Все статусы'}
+            <span className="filter-arrow">{showStatusFilter ? '▲' : '▼'}</span>
+          </button>
+          {showStatusFilter && (
+            <div className="filter-type-dropdown">
+              <label
+                className={`filter-type-item ${!filterStatus ? 'checked' : ''}`}
+                onClick={() => { setFilterStatus(''); setShowStatusFilter(false); }}
+              >
+                <span className="filter-type-dot" style={{ background: '#999' }}></span>
+                <span>Все статусы</span>
+              </label>
+              {['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Утверждено'].map(s => (
+                <label
+                  key={s}
+                  className={`filter-type-item ${filterStatus === s ? 'checked' : ''}`}
+                  onClick={() => { setFilterStatus(s); setShowStatusFilter(false); }}
+                >
+                  <span className="filter-type-dot" style={{ background: getStatusColor(s) }}></span>
+                  <span>{s}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {message.text && !editDoc && (
@@ -249,12 +302,18 @@ const MyDocuments = () => {
                   </div>
                 )}
                 <div className="mydoc-actions">
-                  <button className="btn-edit" onClick={() => openEdit(doc)}>
-                    Редактировать
-                  </button>
-                  <button className="btn-delete" onClick={() => setDeleteConfirm(doc._id)}>
-                    Удалить
-                  </button>
+                  {doc.status === 'Утверждено' ? (
+                    <span className="doc-locked">🔒 Документ утверждён и заблокирован</span>
+                  ) : (
+                  <>
+                    <button className="btn-edit" onClick={() => openEdit(doc)}>
+                      Редактировать
+                    </button>
+                    <button className="btn-delete" onClick={() => setDeleteConfirm(doc._id)}>
+                      Удалить
+                    </button>
+                  </>
+                  )}
                 </div>
               </div>
             </div>

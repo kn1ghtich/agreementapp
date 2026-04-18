@@ -13,7 +13,7 @@ const generateToken = (id) => {
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { login, email, password, fullName, phone, department } = req.body;
+    const { login, email, password, fullName, phone } = req.body;
 
     const existingUser = await User.findOne({ $or: [{ login }, { email }] });
     if (existingUser) {
@@ -22,7 +22,7 @@ router.post('/register', async (req, res) => {
     }
 
     const user = await User.create({
-      login, email, password, fullName, phone, department
+      login, email, password, fullName, phone, department: 'Нет отдела'
     });
 
     res.status(201).json({

@@ -35,6 +35,7 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
   const isPresident = user.department === 'Президент';
 
   const canSetStatus = (s) => {
+    if (document.status === 'Утверждено') return false;
     if (!isRecipient || loading) return false;
     if (s === 'Утверждено') {
       if (!isPresident) return false;
