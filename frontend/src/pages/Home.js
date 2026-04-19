@@ -41,6 +41,16 @@ const Home = () => {
 
   useEffect(() => {
     if (!loading) fetchDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo]);
+
+  // Тихий поллинг — подтягиваем новые документы каждые 15 секунд
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchDocuments();
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
 
   const handleDocUpdate = (updatedDoc) => {

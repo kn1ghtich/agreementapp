@@ -15,6 +15,16 @@ const Statistics = () => {
 
   useEffect(() => {
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, dateFrom, dateTo]);
+
+  // Тихий поллинг — обновляем статистику каждые 20 секунд
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchStats();
+    }, 20000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, dateFrom, dateTo]);
 
   const customIncomplete = period === 'custom' && (!dateFrom || !dateTo);

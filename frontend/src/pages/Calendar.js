@@ -22,11 +22,12 @@ const Calendar = () => {
   const month = currentDate.getMonth();
 
   useEffect(() => {
-    fetchDocuments();
+    fetchDocuments(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, year]);
 
-  const fetchDocuments = async () => {
-    setLoading(true);
+  const fetchDocuments = async (showLoader = false) => {
+    if (showLoader) setLoading(true);
     try {
       const { data } = await API.get(`/documents/calendar?month=${month + 1}&year=${year}`);
       setDocuments(data);
@@ -36,6 +37,15 @@ const Calendar = () => {
       setLoading(false);
     }
   };
+
+  // Тихий поллинг — обновляем календарь каждые 15 секунд
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchDocuments(false);
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month, year]);
 
   const prevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
