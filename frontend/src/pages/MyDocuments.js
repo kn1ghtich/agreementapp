@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import API from '../api/axios';
 import { DOCUMENT_COLORS } from '../components/DocumentModal';
 import UserProfileModal from '../components/UserProfileModal';
 import '../styles/MyDocuments.css';
+
+const PAGE_SIZE = 5;
 
 const MyDocuments = () => {
   const [documents, setDocuments] = useState([]);
@@ -15,12 +17,14 @@ const MyDocuments = () => {
   const [departments, setDepartments] = useState([]);
   const [editDoc, setEditDoc] = useState(null);
   const [editData, setEditData] = useState({});
-  const [editFile, setEditFile] = useState(null);
+  const [editFiles, setEditFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [viewProfileId, setViewProfileId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const sentinelRef = useRef(null);
 
   useEffect(() => {
     Promise.all([
@@ -51,6 +55,28 @@ const MyDocuments = () => {
     return true;
   });
 
+  const visibleDocs = filteredDocs.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredDocs.length;
+
+  // Сброс видимого окна при изменении фильтров
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search, filterType, filterStatus]);
+
+  // IntersectionObserver: подгружаем ещё по 5 при приближении к концу списка
+  useEffect(() => {
+    if (!hasMore) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount(prev => prev + PAGE_SIZE);
+      }
+    }, { rootMargin: '200px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, visibleDocs.length]);
+
   const isOverdue = (doc) => new Date(doc.deadline) < new Date() && doc.status !== 'Утверждено';
 
   const formatDate = (date) => {
@@ -76,7 +102,7 @@ const MyDocuments = () => {
       departments: doc.departments || [],
       deadline: doc.deadline ? new Date(doc.deadline).toISOString().split('T')[0] : ''
     });
-    setEditFile(null);
+    setEditFiles([]);
     setMessage({ text: '', type: '' });
   };
 
@@ -100,10 +126,13 @@ const MyDocuments = () => {
   };
 
   const handleEditFileChange = (e) => {
-    const selected = e.target.files[0];
-    if (selected && selected.name.endsWith('.docx')) {
-      setEditFile(selected);
-    }
+    const selected = Array.from(e.target.files || []).filter(f => f.name.toLowerCase().endsWith('.docx'));
+    setEditFiles(prev => [...prev, ...selected]);
+    e.target.value = '';
+  };
+
+  const removeEditFile = (idx) => {
+    setEditFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
   const handleSave = async (e) => {
@@ -118,7 +147,7 @@ const MyDocuments = () => {
       formData.append('documentType', editData.documentType);
       formData.append('departments', editData.departments.join(','));
       formData.append('deadline', editData.deadline);
-      if (editFile) formData.append('file', editFile);
+      editFiles.forEach(f => formData.append('files', f));
 
       const { data } = await API.put(`/documents/${editDoc._id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -231,7 +260,7 @@ const MyDocuments = () => {
             <p>Вы ещё не создали ни одного документа</p>
           </div>
         ) : (
-          filteredDocs.map(doc => (
+          visibleDocs.map(doc => (
             <div key={doc._id} className={`mydoc-card ${isOverdue(doc) ? 'overdue' : ''}`}>
               <div className="mydoc-main">
                 <div className="mydoc-header">
@@ -268,12 +297,23 @@ const MyDocuments = () => {
                   </div>
                 )}
 
-                {doc.file && (
-                  <div className="mydoc-file" onClick={() => window.open(`http://localhost:5000/api/files/${doc.file.fileId}/download`, '_blank')}>
-                    <span className="file-icon-sm">DOCX</span>
-                    <span>{doc.file.originalName}</span>
-                  </div>
-                )}
+                {(() => {
+                  const docFiles = (doc.files && doc.files.length > 0)
+                    ? doc.files
+                    : (doc.file?.fileId ? [doc.file] : []);
+                  return docFiles.map((f, i) => (
+                    <div
+                      key={i}
+                      className="mydoc-file"
+                      onClick={() => window.open(`http://localhost:5000/api/files/${f.fileId}/download`, '_blank')}
+                    >
+                      <span className="file-icon-sm">
+                        {(f.originalName?.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
+                      </span>
+                      <span>{f.originalName}</span>
+                    </div>
+                  ));
+                })()}
                 {doc.lastModifiedBy && (
                   <p className="mydoc-last-change">
                     Последнее изменение:{' '}
@@ -318,6 +358,9 @@ const MyDocuments = () => {
               </div>
             </div>
           ))
+        )}
+        {hasMore && (
+          <div ref={sentinelRef} className="mydocs-sentinel">Загрузка ещё...</div>
         )}
       </div>
 
@@ -375,7 +418,7 @@ const MyDocuments = () => {
                 <div className="form-group">
                   <label>Отделы-получатели</label>
                   <div className="departments-checklist">
-                    {departments.map(dept => (
+                    {departments.filter(dept => dept !== 'Нет отдела').map(dept => (
                       <label key={dept} className={`dept-checkbox ${editData.departments?.includes(dept) ? 'checked' : ''}`}>
                         <input
                           type="checkbox"
@@ -392,8 +435,18 @@ const MyDocuments = () => {
                   <input type="date" name="deadline" value={editData.deadline} onChange={handleEditChange} required />
                 </div>
                 <div className="form-group">
-                  <label>Заменить документ (.docx)</label>
-                  <input type="file" accept=".docx" onChange={handleEditFileChange} />
+                  <label>Добавить документы (.docx) {editFiles.length > 0 && `— новых: ${editFiles.length}`}</label>
+                  <input type="file" accept=".docx" multiple onChange={handleEditFileChange} />
+                  {editFiles.length > 0 && (
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {editFiles.map((f, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                          <span>📄 {f.name}</span>
+                          <button type="button" onClick={() => removeEditFile(i)} style={{ border: 'none', background: 'none', color: '#E53935', cursor: 'pointer' }}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div style={{display: 'flex', gap: '10px'}}>
                   <button type="submit" className="btn-primary" disabled={saving}>

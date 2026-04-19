@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import API from '../api/axios';
 import UserProfileModal from './UserProfileModal';
@@ -23,8 +23,10 @@ const STATUSES = ['Входящие', 'На рассмотрении', 'Дора
 const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
   const { user } = useAuth();
   const [comment, setComment] = useState('');
+  const [commentFiles, setCommentFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [viewProfileId, setViewProfileId] = useState(null);
+  const commentFileRef = useRef(null);
 
   const userDeptStatus = document.departmentStatuses?.find(
     ds => ds.department === user.department
@@ -32,13 +34,13 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
   const currentStatus = userDeptStatus?.status || document.status || 'Входящие';
   const isRecipient = !isSender && document.departments?.includes(user.department);
   const isOverdue = new Date(document.deadline) < new Date() && document.status !== 'Утверждено';
-  const isPresident = user.department === 'Президент';
+  const canApprove = user.department === 'Президент' || user.department === 'Вице-президент';
 
   const canSetStatus = (s) => {
     if (document.status === 'Утверждено') return false;
     if (!isRecipient || loading) return false;
     if (s === 'Утверждено') {
-      if (!isPresident) return false;
+      if (!canApprove) return false;
       const allAgreed = document.departmentStatuses?.every(ds => ds.status === 'Согласование');
       return allAgreed;
     }
@@ -60,12 +62,19 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
 
   const handleComment = async (e) => {
     e.preventDefault();
-    if (!comment.trim()) return;
+    if (!comment.trim() && commentFiles.length === 0) return;
     setLoading(true);
     try {
-      const { data } = await API.post(`/documents/${document._id}/comments`, { text: comment });
+      const formData = new FormData();
+      formData.append('text', comment);
+      commentFiles.forEach(f => formData.append('files', f));
+      const { data } = await API.post(`/documents/${document._id}/comments`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       if (onUpdate) onUpdate(data);
       setComment('');
+      setCommentFiles([]);
+      if (commentFileRef.current) commentFileRef.current.value = '';
     } catch (err) {
       alert(err.response?.data?.message || 'Ошибка');
     } finally {
@@ -73,11 +82,25 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
     }
   };
 
-  const handleDownload = () => {
-    if (document.file?.fileId) {
-      window.open(`http://localhost:5000/api/files/${document.file.fileId}/download`, '_blank');
+  const handleCommentFilePick = (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length) setCommentFiles(prev => [...prev, ...picked]);
+    e.target.value = '';
+  };
+
+  const removeCommentFile = (idx) => {
+    setCommentFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleDownload = (fileId) => {
+    if (fileId) {
+      window.open(`http://localhost:5000/api/files/${fileId}/download`, '_blank');
     }
   };
+
+  const docFiles = (document.files && document.files.length > 0)
+    ? document.files
+    : (document.file?.fileId ? [document.file] : []);
 
   const formatDate = (date) => {
     return new Date(date).toLocaleDateString('ru-RU', {
@@ -169,12 +192,18 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
             </div>
           )}
 
-          {document.file && (
+          {docFiles.length > 0 && (
             <div className="modal-section">
-              <h4>Документ</h4>
-              <div className="file-download" onClick={handleDownload}>
-                <div className="file-icon">DOCX</div>
-                <span>{document.file.originalName}</span>
+              <h4>{docFiles.length > 1 ? `Документы (${docFiles.length})` : 'Документ'}</h4>
+              <div className="files-list">
+                {docFiles.map((f, i) => (
+                  <div key={i} className="file-download" onClick={() => handleDownload(f.fileId)}>
+                    <div className="file-icon">
+                      {(f.originalName?.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
+                    </div>
+                    <span>{f.originalName}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -208,7 +237,24 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
                     </strong>
                     <span className="comment-date">{formatDate(c.createdAt)}</span>
                   </div>
-                  <p>{c.text}</p>
+                  {c.text && <p>{c.text}</p>}
+                  {(() => {
+                    const cFiles = (c.files && c.files.length > 0)
+                      ? c.files
+                      : (c.file?.fileId ? [c.file] : []);
+                    return cFiles.map((f, fi) => (
+                      <div
+                        key={fi}
+                        className="comment-file"
+                        onClick={() => window.open(`http://localhost:5000/api/files/${f.fileId}/download`, '_blank')}
+                      >
+                        <span className="file-icon-sm">
+                          {(f.originalName?.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
+                        </span>
+                        <span>{f.originalName}</span>
+                      </div>
+                    ));
+                  })()}
                 </div>
               ))}
               {(!document.comments || document.comments.length === 0) && (
@@ -218,16 +264,62 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
 
             <form onSubmit={handleComment} className="comment-form">
               <input
+                type="file"
+                ref={commentFileRef}
+                onChange={handleCommentFilePick}
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.gif,.doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.txt,.rtf,.odt,.ods,.odp,.csv,.zip,.rar,.7z"
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                className="comment-attach-btn"
+                onClick={() => commentFileRef.current?.click()}
+                disabled={loading}
+                title="Прикрепить файл(ы)"
+                aria-label="Прикрепить файл"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path
+                    d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <input
                 type="text"
                 value={comment}
                 onChange={e => setComment(e.target.value)}
                 placeholder="Написать комментарий..."
                 disabled={loading}
               />
-              <button type="submit" disabled={!comment.trim() || loading}>
+              <button type="submit" disabled={(!comment.trim() && commentFiles.length === 0) || loading}>
                 Отправить
               </button>
             </form>
+
+            {commentFiles.length > 0 && (
+              <div className="comment-files-preview">
+                {commentFiles.map((f, idx) => (
+                  <div key={idx} className="comment-file-preview">
+                    <span className="file-icon-sm">
+                      {(f.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
+                    </span>
+                    <span>{f.name}</span>
+                    <button
+                      type="button"
+                      className="file-remove"
+                      onClick={() => removeCommentFile(idx)}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import API from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import { DOCUMENT_COLORS } from '../components/DocumentModal';
 import '../styles/Statistics.css';
 
 const Statistics = () => {
+  const { user } = useAuth();
+  const hasDepartment = user?.department && user.department !== 'Нет отдела';
   const [stats, setStats] = useState(null);
   const [period, setPeriod] = useState('month');
   const [dateFrom, setDateFrom] = useState('');
@@ -14,14 +17,22 @@ const Statistics = () => {
     fetchStats();
   }, [period, dateFrom, dateTo]);
 
+  const customIncomplete = period === 'custom' && (!dateFrom || !dateTo);
+
   const fetchStats = async () => {
+    // Для периода с пользовательскими датами ждём пока выбраны обе
+    if (customIncomplete) {
+      setStats(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params = {};
-      if (period === 'custom' && dateFrom && dateTo) {
+      if (period === 'custom') {
         params.dateFrom = dateFrom;
         params.dateTo = dateTo;
-      } else if (period !== 'custom') {
+      } else {
         params.period = period;
       }
       const { data } = await API.get('/documents/stats', { params });
@@ -42,11 +53,19 @@ const Statistics = () => {
   };
 
   const maxTypeCount = stats?.byType?.length > 0 ? Math.max(...stats.byType.map(t => t.count)) : 1;
-  const maxDeptCount = stats?.byDepartment?.length > 0 ? Math.max(...stats.byDepartment.map(d => d.count)) : 1;
 
   return (
     <div className="stats-container">
-      <h1 className="page-title">Статистика</h1>
+      <h1 className="page-title">
+        Статистика
+        {hasDepartment && <span className="stats-dept-label"> — {user.department}</span>}
+      </h1>
+
+      {!hasDepartment && (
+        <div className="stats-empty-state">
+          У вас не назначен отдел. Статистика недоступна — обратитесь к администратору.
+        </div>
+      )}
 
       <div className="stats-filters">
         <div className="stats-period-btns">
@@ -69,7 +88,11 @@ const Statistics = () => {
         )}
       </div>
 
-      {loading ? (
+      {customIncomplete ? (
+        <div className="stats-empty-state">
+          Выберите обе даты, чтобы увидеть статистику за период.
+        </div>
+      ) : loading ? (
         <div className="loading-screen">Загрузка...</div>
       ) : stats ? (
         <div className="stats-grid">
@@ -124,28 +147,6 @@ const Statistics = () => {
             </div>
           </div>
 
-          {/* By department */}
-          <div className="stats-card stats-wide">
-            <h3>По отделам-получателям</h3>
-            <div className="stats-bars">
-              {stats.byDepartment.map(d => (
-                <div key={d._id} className="stats-bar-row">
-                  <span className="stats-bar-label">{d._id}</span>
-                  <div className="stats-bar-track">
-                    <div
-                      className="stats-bar-fill"
-                      style={{
-                        width: `${(d.count / maxDeptCount) * 100}%`,
-                        background: '#1a73e8'
-                      }}
-                    />
-                  </div>
-                  <span className="stats-bar-count">{d.count}</span>
-                </div>
-              ))}
-              {stats.byDepartment.length === 0 && <p className="stats-empty">Нет данных</p>}
-            </div>
-          </div>
         </div>
       ) : null}
     </div>

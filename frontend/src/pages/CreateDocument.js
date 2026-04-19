@@ -12,7 +12,7 @@ const CreateDocument = () => {
     departments: [],
     deadline: ''
   });
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [docTypes, setDocTypes] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [error, setError] = useState('');
@@ -45,15 +45,19 @@ const CreateDocument = () => {
   };
 
   const handleFileChange = (e) => {
-    const selected = e.target.files[0];
-    if (selected) {
-      if (!selected.name.endsWith('.docx')) {
-        setError('Допустимы только .docx файлы');
-        return;
-      }
-      setFile(selected);
-      setError('');
+    const selected = Array.from(e.target.files || []);
+    const invalid = selected.find(f => !f.name.toLowerCase().endsWith('.docx'));
+    if (invalid) {
+      setError('Допустимы только .docx файлы');
+      return;
     }
+    setFiles(prev => [...prev, ...selected]);
+    setError('');
+    e.target.value = '';
+  };
+
+  const removeFile = (idx) => {
+    setFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
   const handleSubmit = async (e) => {
@@ -75,7 +79,7 @@ const CreateDocument = () => {
       data.append('documentType', formData.documentType);
       data.append('departments', formData.departments.join(','));
       data.append('deadline', formData.deadline);
-      if (file) data.append('file', file);
+      files.forEach(f => data.append('files', f));
 
       await API.post('/documents', data, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -83,7 +87,7 @@ const CreateDocument = () => {
 
       setSuccess('Документ успешно создан!');
       setFormData({ title: '', description: '', documentType: '', departments: [], deadline: '' });
-      setFile(null);
+      setFiles([]);
 
       setTimeout(() => navigate('/my-documents'), 1500);
     } catch (err) {
@@ -183,7 +187,7 @@ const CreateDocument = () => {
           <div className="form-group">
             <label>Отделы-получатели * ({formData.departments.length} выбрано)</label>
             <div className="departments-checklist">
-              {departments.map(dept => (
+              {departments.filter(dept => dept !== 'Нет отдела').map(dept => (
                 <label key={dept} className={`dept-checkbox ${formData.departments.includes(dept) ? 'checked' : ''}`}>
                   <input
                     type="checkbox"
@@ -197,30 +201,38 @@ const CreateDocument = () => {
           </div>
 
           <div className="form-group">
-            <label>Документ (.docx)</label>
+            <label>Документы (.docx) {files.length > 0 && `— выбрано: ${files.length}`}</label>
             <div className="file-upload-area">
               <input
                 type="file"
                 accept=".docx"
+                multiple
                 onChange={handleFileChange}
                 id="file-input"
                 className="file-input-hidden"
               />
+              {files.length > 0 && (
+                <div className="files-selected-list">
+                  {files.map((f, idx) => (
+                    <div key={idx} className="file-selected">
+                      <span className="file-icon-sm">DOCX</span>
+                      <span>{f.name}</span>
+                      <button
+                        type="button"
+                        className="file-remove"
+                        onClick={() => removeFile(idx)}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <label htmlFor="file-input" className="file-upload-label">
-                {file ? (
-                  <div className="file-selected">
-                    <span className="file-icon-sm">DOCX</span>
-                    <span>{file.name}</span>
-                    <button type="button" className="file-remove" onClick={(e) => { e.preventDefault(); setFile(null); }}>
-                      &times;
-                    </button>
-                  </div>
-                ) : (
-                  <div className="file-placeholder">
-                    <span className="upload-icon">+</span>
-                    <span>Нажмите для загрузки .docx файла</span>
-                  </div>
-                )}
+                <div className="file-placeholder">
+                  <span className="upload-icon">+</span>
+                  <span>{files.length > 0 ? 'Добавить ещё .docx файл(ы)' : 'Нажмите для загрузки .docx файла(ов)'}</span>
+                </div>
               </label>
             </div>
           </div>

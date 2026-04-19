@@ -168,6 +168,13 @@
   line-height: 1;
 }
 
+.files-selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .file-selected {
   display: flex;
   align-items: center;

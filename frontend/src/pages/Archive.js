@@ -1,36 +1,44 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import API from '../api/axios';
 import DocumentModal from '../components/DocumentModal';
 import { DOCUMENT_COLORS } from '../components/DocumentModal';
 import '../styles/Archive.css';
 
+const PAGE_SIZE = 15;
+
 const Archive = () => {
   const [documents, setDocuments] = useState([]);
   const [search, setSearch] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
   const [filterType, setFilterType] = useState([]);
-  const [filterStatus, setFilterStatus] = useState('');
   const [showTypeFilter, setShowTypeFilter] = useState(false);
-  const [showStatusFilter, setShowStatusFilter] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [docTypes, setDocTypes] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const didMount = useRef(false);
 
   useEffect(() => {
     API.get('/documents/types').then(res => setDocTypes(res.data)).catch(() => {});
-    fetchDocuments();
   }, []);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (pageToFetch = page) => {
     setLoading(true);
     try {
-      const params = {};
-      if (search) params.search = search;
+      const params = { page: pageToFetch, limit: PAGE_SIZE };
+      if (submittedSearch) params.search = submittedSearch;
       if (dateFrom) params.dateFrom = dateFrom;
       if (dateTo) params.dateTo = dateTo;
+      if (filterType.length > 0) params.types = filterType.join(',');
       const { data } = await API.get('/documents/archive', { params });
-      setDocuments(data);
+      setDocuments(data.items || []);
+      setPages(data.pages || 1);
+      setTotal(data.total || 0);
+      setPage(data.page || pageToFetch);
     } catch (err) {
       console.error(err);
     } finally {
@@ -38,9 +46,19 @@ const Archive = () => {
     }
   };
 
+  // Initial load
   useEffect(() => {
-    if (!loading) fetchDocuments();
-  }, [dateFrom, dateTo]);
+    fetchDocuments(1);
+    didMount.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Reset to page 1 and refetch when filters change
+  useEffect(() => {
+    if (!didMount.current) return;
+    fetchDocuments(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, filterType, submittedSearch]);
 
   const handleFilterTypeToggle = (type) => {
     setFilterType(prev =>
@@ -48,15 +66,9 @@ const Archive = () => {
     );
   };
 
-  const filteredDocuments = documents.filter(doc => {
-    if (filterType.length > 0 && !filterType.includes(doc.documentType)) return false;
-    if (filterStatus && doc.status !== filterStatus) return false;
-    return true;
-  });
-
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchDocuments();
+    setSubmittedSearch(search);
   };
 
   const handleDocUpdate = (updatedDoc) => {
@@ -76,6 +88,24 @@ const Archive = () => {
       'Доработка': '#E53935', 'Согласование': '#8E24AA', 'Утверждено': '#43A047'
     };
     return colors[status] || '#666';
+  };
+
+  const goToPage = (p) => {
+    const target = Math.min(Math.max(1, p), pages);
+    if (target === page) return;
+    fetchDocuments(target);
+  };
+
+  // Build compact page list: 1 … p-1 p p+1 … N
+  const buildPageList = () => {
+    const result = [];
+    const push = (v) => { if (result[result.length - 1] !== v) result.push(v); };
+    push(1);
+    if (page > 3) push('…');
+    for (let i = Math.max(2, page - 1); i <= Math.min(pages - 1, page + 1); i++) push(i);
+    if (page < pages - 2) push('…');
+    if (pages > 1) push(pages);
+    return result;
   };
 
   return (
@@ -124,37 +154,6 @@ const Archive = () => {
           )}
         </div>
 
-        <div className="filter-type-wrapper">
-          <button
-            className={`filter-type-btn ${filterStatus ? 'active' : ''}`}
-            onClick={() => setShowStatusFilter(!showStatusFilter)}
-          >
-            {filterStatus || 'Все статусы'}
-            <span className="filter-arrow">{showStatusFilter ? '▲' : '▼'}</span>
-          </button>
-          {showStatusFilter && (
-            <div className="filter-type-dropdown">
-              <label
-                className={`filter-type-item ${!filterStatus ? 'checked' : ''}`}
-                onClick={() => { setFilterStatus(''); setShowStatusFilter(false); }}
-              >
-                <span className="filter-type-dot" style={{ background: '#999' }}></span>
-                <span>Все статусы</span>
-              </label>
-              {['Входящие', 'На рассмотрении', 'Доработка', 'Согласование', 'Утверждено'].map(s => (
-                <label
-                  key={s}
-                  className={`filter-type-item ${filterStatus === s ? 'checked' : ''}`}
-                  onClick={() => { setFilterStatus(s); setShowStatusFilter(false); }}
-                >
-                  <span className="filter-type-dot" style={{ background: getStatusColor(s) }}></span>
-                  <span>{s}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-
         <div className="date-range">
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="date-input" />
           <span className="date-separator">—</span>
@@ -170,48 +169,87 @@ const Archive = () => {
       {loading ? (
         <div className="loading-screen">Загрузка...</div>
       ) : (
-        <div className="archive-list">
-          <table className="doc-table">
-            <thead>
-              <tr>
-                <th>Тип</th>
-                <th>Название</th>
-                <th>Статус</th>
-                <th>Отделы</th>
-                <th>Срок</th>
-                <th>Создан</th>
-                <th>Отправитель</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredDocuments.map(doc => (
-                <tr key={doc._id} onClick={() => setSelectedDoc(doc)} className="clickable-row">
-                  <td>
-                    <span
-                      className="doc-type-badge-sm"
-                      style={{ background: DOCUMENT_COLORS[doc.documentType] || '#666' }}
-                    >
-                      {doc.documentType}
-                    </span>
-                  </td>
-                  <td className="td-title">{doc.title}</td>
-                  <td>
-                    <span className="status-badge" style={{ background: getStatusColor(doc.status) }}>
-                      {doc.status}
-                    </span>
-                  </td>
-                  <td className="td-depts">{doc.departments?.join(', ')}</td>
-                  <td>{formatDate(doc.deadline)}</td>
-                  <td>{formatDate(doc.createdAt)}</td>
-                  <td>{doc.sender?.fullName}</td>
+        <>
+          <div className="archive-list">
+            <table className="doc-table">
+              <thead>
+                <tr>
+                  <th>Тип</th>
+                  <th>Название</th>
+                  <th>Статус</th>
+                  <th>Отделы</th>
+                  <th>Срок</th>
+                  <th>Создан</th>
+                  <th>Отправитель</th>
                 </tr>
-              ))}
-              {filteredDocuments.length === 0 && (
-                <tr><td colSpan="7" className="empty-row">Документы не найдены</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {documents.map(doc => (
+                  <tr key={doc._id} onClick={() => setSelectedDoc(doc)} className="clickable-row">
+                    <td>
+                      <span
+                        className="doc-type-badge-sm"
+                        style={{ background: DOCUMENT_COLORS[doc.documentType] || '#666' }}
+                      >
+                        {doc.documentType}
+                      </span>
+                    </td>
+                    <td className="td-title">{doc.title}</td>
+                    <td>
+                      <span className="status-badge" style={{ background: getStatusColor(doc.status) }}>
+                        {doc.status}
+                      </span>
+                    </td>
+                    <td className="td-depts">{doc.departments?.join(', ')}</td>
+                    <td>{formatDate(doc.deadline)}</td>
+                    <td>{formatDate(doc.createdAt)}</td>
+                    <td>{doc.sender?.fullName}</td>
+                  </tr>
+                ))}
+                {documents.length === 0 && (
+                  <tr><td colSpan="7" className="empty-row">Документы не найдены</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {total > 0 && (
+            <div className="archive-pagination">
+              <span className="pagination-info">
+                Страница {page} из {pages} · всего {total}
+              </span>
+              <div className="pagination-controls">
+                <button
+                  className="page-btn"
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1}
+                >
+                  ← Назад
+                </button>
+                {buildPageList().map((p, idx) =>
+                  p === '…' ? (
+                    <span key={`e${idx}`} className="page-ellipsis">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      className={`page-btn ${p === page ? 'active' : ''}`}
+                      onClick={() => goToPage(p)}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+                <button
+                  className="page-btn"
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= pages}
+                >
+                  Вперёд →
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {selectedDoc && (

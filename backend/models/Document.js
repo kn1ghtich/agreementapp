@@ -8,8 +8,17 @@ const commentSchema = new mongoose.Schema({
   },
   text: {
     type: String,
-    required: true
+    default: ''
   },
+  file: {
+    fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
+    originalName: String
+  },
+  files: [{
+    _id: false,
+    fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
+    originalName: String
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -50,6 +59,11 @@ const documentSchema = new mongoose.Schema({
     fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
     originalName: String
   },
+  files: [{
+    _id: false,
+    fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
+    originalName: String
+  }],
   sender: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

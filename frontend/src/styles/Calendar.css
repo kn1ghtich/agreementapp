@@ -96,6 +96,10 @@
   color: #E53935;
 }
 
+.calendar-cell.today.weekend .cell-day {
+  color: #fff;
+}
+
 .calendar-cell.weekend:hover:not(.empty) {
   background: #ffecec;
 }

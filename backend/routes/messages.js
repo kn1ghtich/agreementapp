@@ -15,10 +15,10 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
-    if (/\.(jpeg|jpg|png|webp|docx)$/i.test(name)) {
+    if (/\.(jpeg|jpg|png|webp|doc|docx|pdf|xls|xlsx|ppt|pptx|txt|rtf|odt|ods|odp|csv|zip|rar|7z)$/i.test(name)) {
       cb(null, true);
     } else {
-      cb(new Error('Допустимы только изображения и .docx файлы'));
+      cb(new Error('Недопустимый формат файла'));
     }
   }
 });
@@ -113,23 +113,65 @@ router.get('/unread-count', protect, async (req, res) => {
 });
 
 // GET /api/messages/:userId
+// Query params:
+//   limit  — сколько последних сообщений вернуть (по умолчанию 30)
+//   before — ISO дата; вернуть limit сообщений, строго старее этой даты
+//   after  — ISO дата; вернуть ВСЕ сообщения новее этой даты (для поллинга)
 router.get('/:userId', protect, async (req, res) => {
   try {
-    const messages = await Message.find({
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
+    const { before, after } = req.query;
+
+    const baseFilter = {
       $or: [
         { sender: req.user._id, receiver: req.params.userId },
         { sender: req.params.userId, receiver: req.user._id }
       ]
-    })
+    };
+
+    // Режим поллинга: получить все сообщения новее курсора (по возрастанию)
+    if (after) {
+      const messages = await Message.find({
+        ...baseFilter,
+        createdAt: { $gt: new Date(after) }
+      })
+        .populate('sender', 'fullName avatar')
+        .sort({ createdAt: 1 });
+
+      await Message.updateMany(
+        { sender: req.params.userId, receiver: req.user._id, read: false },
+        { read: true }
+      );
+
+      return res.json({ items: messages, hasMore: false });
+    }
+
+    // Инициальная загрузка или подгрузка старых сообщений
+    const filter = { ...baseFilter };
+    if (before) {
+      filter.createdAt = { $lt: new Date(before) };
+    }
+
+    // +1 чтобы определить есть ли ещё более старые сообщения
+    const raw = await Message.find(filter)
       .populate('sender', 'fullName avatar')
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: -1 })
+      .limit(limit + 1);
 
-    await Message.updateMany(
-      { sender: req.params.userId, receiver: req.user._id, read: false },
-      { read: true }
-    );
+    const hasMore = raw.length > limit;
+    const slice = hasMore ? raw.slice(0, limit) : raw;
+    // Разворачиваем в хронологический порядок для отображения
+    const items = slice.reverse();
 
-    res.json(messages);
+    // Помечаем прочитанными только при инициальной загрузке
+    if (!before) {
+      await Message.updateMany(
+        { sender: req.params.userId, receiver: req.user._id, read: false },
+        { read: true }
+      );
+    }
+
+    res.json({ items, hasMore });
   } catch (error) {
     res.status(500).json({ message: 'Ошибка получения сообщений' });
   }

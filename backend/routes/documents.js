@@ -5,6 +5,7 @@ const Document = require('../models/Document');
 const File = require('../models/File');
 const { protect } = require('../middleware/auth');
 const { DOCUMENT_TYPES } = require('../config/teams');
+const { docxBufferToPdf } = require('../utils/docxToPdf');
 
 const router = express.Router();
 
@@ -19,6 +20,20 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error('Допустимы только .docx файлы'));
+    }
+  }
+});
+
+// Multer для файлов в комментариях — разрешаем широкий набор
+const commentUpload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    if (/\.(jpeg|jpg|png|webp|gif|doc|docx|pdf|xls|xlsx|ppt|pptx|txt|rtf|odt|ods|odp|csv|zip|rar|7z)$/i.test(name)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Недопустимый формат файла'));
     }
   }
 });
@@ -44,8 +59,21 @@ router.get('/types', protect, (req, res) => {
 // GET /api/documents/stats
 router.get('/stats', protect, async (req, res) => {
   try {
+    const userDept = req.user.department;
+
+    // Пользователи без отдела не видят статистику
+    if (!userDept || userDept === 'Нет отдела') {
+      return res.json({ total: 0, byType: [], byStatus: [], byDepartment: [] });
+    }
+
     const { dateFrom, dateTo, period } = req.query;
-    let matchFilter = {};
+    let matchFilter = {
+      // Документы относятся к отделу, если он либо получатель, либо отправитель
+      $or: [
+        { departments: userDept },
+        { 'departmentStatuses.department': userDept }
+      ]
+    };
 
     if (dateFrom && dateTo) {
       matchFilter.createdAt = {
@@ -78,7 +106,7 @@ router.get('/stats', protect, async (req, res) => {
 
     const total = docs.length;
 
-    // Per-department stats
+    // По отделам-получателям (в рамках документов, относящихся к отделу пользователя)
     const byDepartment = await Document.aggregate([
       { $match: matchFilter },
       { $unwind: '$departments' },
@@ -95,26 +123,45 @@ router.get('/stats', protect, async (req, res) => {
 // GET /api/documents/archive
 router.get('/archive', protect, async (req, res) => {
   try {
-    const { search, documentType, dateFrom, dateTo } = req.query;
-    const filter = {};
+    const { search, documentType, types, dateFrom, dateTo } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 15));
+
+    const filter = {
+      // Только утверждённые: непустой departmentStatuses, все элементы со статусом 'Утверждено'
+      'departmentStatuses.0': { $exists: true },
+      departmentStatuses: { $not: { $elemMatch: { status: { $ne: 'Утверждено' } } } }
+    };
 
     if (search) filter.title = { $regex: search, $options: 'i' };
     if (documentType) filter.documentType = documentType;
+    if (types) {
+      const typeList = String(types).split(',').map(t => t.trim()).filter(Boolean);
+      if (typeList.length > 0) filter.documentType = { $in: typeList };
+    }
     if (dateFrom || dateTo) {
       filter.createdAt = {};
       if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
       if (dateTo) filter.createdAt.$lte = new Date(new Date(dateTo).setHours(23, 59, 59, 999));
     }
 
-    const docs = await populateDoc(Document.find(filter).sort({ createdAt: -1 }));
-    res.json(docs);
+    const total = await Document.countDocuments(filter);
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const items = await populateDoc(
+      Document.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+    );
+
+    res.json({ items, total, page, pages, limit });
   } catch (error) {
     res.status(500).json({ message: 'Ошибка получения архива' });
   }
 });
 
 // POST /api/documents
-router.post('/', protect, upload.single('file'), async (req, res) => {
+router.post('/', protect, upload.array('files', 20), async (req, res) => {
   try {
     const { title, description, documentType, deadline } = req.body;
     let departments = req.body.departments;
@@ -137,15 +184,21 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
       }))
     };
 
-    if (req.file) {
-      const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
-      const fileDoc = await File.create({
-        originalName,
-        contentType: req.file.mimetype || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        data: req.file.buffer,
-        size: req.file.size
-      });
-      docData.file = { fileId: fileDoc._id, originalName };
+    if (req.files && req.files.length > 0) {
+      const savedFiles = [];
+      for (const f of req.files) {
+        const originalName = Buffer.from(f.originalname, 'latin1').toString('utf8');
+        const fileDoc = await File.create({
+          originalName,
+          contentType: f.mimetype || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          data: f.buffer,
+          size: f.size
+        });
+        savedFiles.push({ fileId: fileDoc._id, originalName });
+      }
+      docData.files = savedFiles;
+      // Для обратной совместимости
+      docData.file = savedFiles[0];
     }
 
     const doc = await Document.create(docData);
@@ -165,9 +218,20 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
 router.get('/', protect, async (req, res) => {
   try {
     const { documentType, search, sort, dateFrom, dateTo } = req.query;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
     const filter = {
       departments: req.user.department,
-      sender: { $ne: req.user._id }
+      // Скрываем полностью утверждённые документы, у которых дедлайн уже прошёл
+      // (строго раньше сегодняшнего дня). Сегодняшние и будущие остаются видимыми.
+      // Такие документы продолжают быть доступны в Архиве.
+      $nor: [
+        {
+          deadline: { $lt: startOfToday },
+          'departmentStatuses.0': { $exists: true },
+          departmentStatuses: { $not: { $elemMatch: { status: { $ne: 'Утверждено' } } } }
+        }
+      ]
     };
 
     if (documentType) filter.documentType = documentType;
@@ -215,7 +279,6 @@ router.get('/calendar', protect, async (req, res) => {
     const docs = await populateDoc(
       Document.find({
         departments: req.user.department,
-        sender: { $ne: req.user._id },
         deadline: { $gte: startDate, $lte: endDate }
       }).sort({ deadline: 1 })
     );
@@ -240,7 +303,7 @@ router.get('/:id', protect, async (req, res) => {
 });
 
 // PUT /api/documents/:id
-router.put('/:id', protect, upload.single('file'), async (req, res) => {
+router.put('/:id', protect, upload.array('files', 20), async (req, res) => {
   try {
     const doc = await Document.findById(req.params.id);
     if (!doc) {
@@ -278,15 +341,24 @@ router.put('/:id', protect, upload.single('file'), async (req, res) => {
       });
     }
 
-    if (req.file) {
-      const originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
-      const fileDoc = await File.create({
-        originalName,
-        contentType: req.file.mimetype || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        data: req.file.buffer,
-        size: req.file.size
-      });
-      doc.file = { fileId: fileDoc._id, originalName };
+    if (req.files && req.files.length > 0) {
+      const newFiles = [];
+      for (const f of req.files) {
+        const originalName = Buffer.from(f.originalname, 'latin1').toString('utf8');
+        const fileDoc = await File.create({
+          originalName,
+          contentType: f.mimetype || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          data: f.buffer,
+          size: f.size
+        });
+        newFiles.push({ fileId: fileDoc._id, originalName });
+      }
+      // Добавляем новые файлы к существующим
+      doc.files = [...(doc.files || []), ...newFiles];
+      // Для обратной совместимости: file = первый файл
+      if (!doc.file?.fileId) {
+        doc.file = newFiles[0];
+      }
     }
 
     // If doc was in Доработка, move back to На рассмотрении
@@ -321,8 +393,12 @@ router.delete('/:id', protect, async (req, res) => {
       return res.status(403).json({ message: 'Утверждённый документ нельзя удалить' });
     }
 
-    // Delete associated file from MongoDB
-    if (doc.file?.fileId) {
+    // Delete associated files from MongoDB
+    if (doc.files && doc.files.length > 0) {
+      for (const f of doc.files) {
+        if (f.fileId) await File.findByIdAndDelete(f.fileId);
+      }
+    } else if (doc.file?.fileId) {
       await File.findByIdAndDelete(doc.file.fileId);
     }
 
@@ -345,10 +421,6 @@ router.put('/:id/status', protect, async (req, res) => {
       return res.status(403).json({ message: 'Статус утверждённого документа нельзя изменить' });
     }
 
-    if (doc.sender.toString() === req.user._id.toString()) {
-      return res.status(403).json({ message: 'Создатель не может менять статус своего документа' });
-    }
-
     const userDept = req.user.department;
     if (!doc.departments.includes(userDept)) {
       return res.status(403).json({ message: 'Вы не являетесь получателем этого документа' });
@@ -357,9 +429,9 @@ router.put('/:id/status', protect, async (req, res) => {
     const { status } = req.body;
 
     if (status === 'Утверждено') {
-      // Only Президент can set Утверждено
-      if (userDept !== 'Президент') {
-        return res.status(403).json({ message: 'Только Президент может утвердить документ' });
+      // Only Президент / Вице-президент can set Утверждено
+      if (userDept !== 'Президент' && userDept !== 'Вице-президент') {
+        return res.status(403).json({ message: 'Только Президент или Вице-президент могут утвердить документ' });
       }
       // All departments must be on Согласование
       const allAgreed = doc.departmentStatuses.every(ds => ds.status === 'Согласование');
@@ -372,6 +444,44 @@ router.put('/:id/status', protect, async (req, res) => {
         ds.changedBy = req.user._id;
         ds.changedAt = new Date();
       });
+
+      // Конвертируем прикреплённые .docx в .pdf
+      const currentFiles = (doc.files && doc.files.length > 0)
+        ? doc.files
+        : (doc.file?.fileId ? [doc.file] : []);
+
+      const convertedFiles = [];
+      for (const f of currentFiles) {
+        const sourceDoc = await File.findById(f.fileId);
+        if (!sourceDoc) {
+          convertedFiles.push(f);
+          continue;
+        }
+        const isDocx = /\.docx$/i.test(sourceDoc.originalName || '');
+        if (!isDocx) {
+          convertedFiles.push(f);
+          continue;
+        }
+        const pdfBuf = await docxBufferToPdf(sourceDoc.data);
+        if (!pdfBuf) {
+          // Конвертация недоступна или упала — оставляем исходный .docx
+          convertedFiles.push(f);
+          continue;
+        }
+        const newName = sourceDoc.originalName.replace(/\.docx$/i, '.pdf');
+        const pdfDoc = await File.create({
+          originalName: newName,
+          contentType: 'application/pdf',
+          data: pdfBuf,
+          size: pdfBuf.length
+        });
+        // Удаляем старый .docx
+        await File.findByIdAndDelete(sourceDoc._id);
+        convertedFiles.push({ fileId: pdfDoc._id, originalName: newName });
+      }
+
+      doc.files = convertedFiles;
+      doc.file = convertedFiles[0] || undefined;
     } else if (status === 'Доработка') {
       // Set ALL departments to Доработка
       doc.departmentStatuses.forEach(ds => {
@@ -401,17 +511,42 @@ router.put('/:id/status', protect, async (req, res) => {
 });
 
 // POST /api/documents/:id/comments
-router.post('/:id/comments', protect, async (req, res) => {
+router.post('/:id/comments', protect, commentUpload.array('files', 10), async (req, res) => {
   try {
     const doc = await Document.findById(req.params.id);
     if (!doc) {
       return res.status(404).json({ message: 'Документ не найден' });
     }
 
-    doc.comments.push({
+    const text = (req.body.text || '').trim();
+    const hasFiles = req.files && req.files.length > 0;
+    if (!text && !hasFiles) {
+      return res.status(400).json({ message: 'Добавьте текст или файл' });
+    }
+
+    const commentData = {
       author: req.user._id,
-      text: req.body.text
-    });
+      text
+    };
+
+    if (hasFiles) {
+      const savedFiles = [];
+      for (const f of req.files) {
+        const originalName = Buffer.from(f.originalname, 'latin1').toString('utf8');
+        const fileDoc = await File.create({
+          originalName,
+          contentType: f.mimetype,
+          data: f.buffer,
+          size: f.size
+        });
+        savedFiles.push({ fileId: fileDoc._id, originalName });
+      }
+      commentData.files = savedFiles;
+      // Обратная совместимость
+      commentData.file = savedFiles[0];
+    }
+
+    doc.comments.push(commentData);
     doc.lastModifiedBy = req.user._id;
     await doc.save();
 

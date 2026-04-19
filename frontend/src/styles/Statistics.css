@@ -4,6 +4,23 @@
   padding: 24px;
 }
 
+.stats-dept-label {
+  font-size: 22px;
+  font-weight: bold;
+  color: #1a73e8;
+}
+
+.stats-empty-state {
+  background: #fff;
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  color: #888;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-bottom: 24px;
+  font-size: 15px;
+}
+
 .stats-filters {
   display: flex;
   align-items: center;

@@ -57,7 +57,11 @@ const Navbar = () => {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <h2>Agreement</h2>
+        <img src="/cmtislogo.png" alt="ЦМТИС" className="navbar-logo" />
+        <h2>
+          <span className="brand-cmtis">ЦМТИС</span>
+          <span className="brand-agreement"> Agreement</span>
+        </h2>
       </div>
 
       <div className="navbar-links">

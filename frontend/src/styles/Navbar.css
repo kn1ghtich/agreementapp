@@ -1,34 +1,59 @@
 .navbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   background: #1a1a2e;
-  padding: 0 24px;
-  height: 60px;
+  padding: 0 28px;
+  height: 72px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   position: sticky;
   top: 0;
   z-index: 100;
 }
 
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.navbar-logo {
+  height: 44px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
 .navbar-brand h2 {
-  color: #fff;
-  font-size: 20px;
+  font-size: 24px;
   margin: 0;
   font-weight: 700;
+  display: flex;
+  align-items: baseline;
+}
+
+.brand-cmtis {
+  color: #bd9a6b;
+}
+
+.brand-agreement {
+  color: #fff;
+  margin-left: 8px;
 }
 
 .navbar-links {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  flex: 0 0 auto;
+  justify-content: center;
 }
 
 .nav-link {
   color: #a0a0b0;
   text-decoration: none;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 13px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 16px;
   font-weight: 500;
   transition: all 0.2s;
   white-space: nowrap;
@@ -47,19 +72,19 @@
 
 .nav-unread-badge {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 4px;
+  right: 4px;
   background: #e53935;
   color: #fff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  min-width: 16px;
-  height: 16px;
+  min-width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  padding: 0 5px;
   line-height: 1;
   box-shadow: 0 1px 4px rgba(229, 57, 53, 0.5);
   animation: badge-pulse 2s infinite;
@@ -74,6 +99,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1;
+  justify-content: flex-end;
 }
 
 .profile-link {
@@ -92,37 +119,37 @@
 }
 
 .navbar-avatar {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   object-fit: cover;
 }
 
 .navbar-avatar-placeholder {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: #1a73e8;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .navbar-username {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
 }
 
 .btn-logout {
-  padding: 6px 14px;
+  padding: 10px 20px;
   background: transparent;
   color: #a0a0b0;
   border: 1px solid #a0a0b0;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: 15px;
   cursor: pointer;
   transition: all 0.2s;
 }
