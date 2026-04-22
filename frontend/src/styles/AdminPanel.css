@@ -24,18 +24,29 @@
   table-layout: fixed;
 }
 
+/* 1 avatar | 2 ФИО | 3 Email | 4 Телефон | 5 Отдел | 6 Действия */
 .admin-table th:nth-child(1),
-.admin-table td:nth-child(1) { width: 50px; }
+.admin-table td:nth-child(1) { width: 60px; }
 .admin-table th:nth-child(2),
-.admin-table td:nth-child(2) { width: 160px; }
+.admin-table td:nth-child(2) { width: 200px; }
 .admin-table th:nth-child(3),
-.admin-table td:nth-child(3) { width: 100px; }
+.admin-table td:nth-child(3) { width: 240px; }
 .admin-table th:nth-child(4),
-.admin-table td:nth-child(4) { width: 200px; }
+.admin-table td:nth-child(4) { width: 160px; }
 .admin-table th:nth-child(5),
-.admin-table td:nth-child(5) { width: 160px; }
+.admin-table td:nth-child(5) { width: 260px; }
 .admin-table th:nth-child(6),
-.admin-table td:nth-child(6) { width: auto; }
+.admin-table td:nth-child(6) { width: 130px; }
+
+.admin-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-table td.admin-name {
+  white-space: normal;
+}
 
 .admin-table th {
   text-align: left;
@@ -95,8 +106,15 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  text-overflow: ellipsis;
 }
 
 .admin-dept-select:focus {
   border-color: #1a73e8;
+}
+
+.admin-delete-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  white-space: nowrap;
 }

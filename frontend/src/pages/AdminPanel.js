@@ -13,6 +13,7 @@ const DEPARTMENTS = [
   'Руководитель центра корпоративного обучения',
   'Руководитель центра развития компетенции медицинских работников',
   'Руководитель службы развития цифровизации и искусственного интеллекта',
+  'Менеджер по государственным закупкам',
   'Юрист'
 ];
 
@@ -20,6 +21,7 @@ const AdminPanel = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ text: '', type: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const navigate = useNavigate();
 
   const adminToken = localStorage.getItem('adminToken');
@@ -62,6 +64,19 @@ const AdminPanel = () => {
     }
   };
 
+  const handleDelete = async (userId) => {
+    try {
+      await adminAPI.delete(`/users/${userId}`);
+      setUsers(prev => prev.filter(u => u._id !== userId));
+      setDeleteConfirm(null);
+      setMessage({ text: 'Пользователь удалён', type: 'success' });
+      setTimeout(() => setMessage({ text: '', type: '' }), 2500);
+    } catch (err) {
+      setMessage({ text: err.response?.data?.message || 'Ошибка удаления', type: 'error' });
+      setDeleteConfirm(null);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
     navigate('/profile');
@@ -94,10 +109,10 @@ const AdminPanel = () => {
             <tr>
               <th></th>
               <th>ФИО</th>
-              <th>Логин</th>
               <th>Email</th>
               <th>Телефон</th>
               <th>Отдел</th>
+              <th>Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -111,7 +126,6 @@ const AdminPanel = () => {
                   )}
                 </td>
                 <td className="admin-name">{u.fullName}</td>
-                <td>{u.login}</td>
                 <td>{u.email}</td>
                 <td>{u.phone}</td>
                 <td>
@@ -125,11 +139,40 @@ const AdminPanel = () => {
                     ))}
                   </select>
                 </td>
+                <td>
+                  <button
+                    className="btn-delete admin-delete-btn"
+                    onClick={() => setDeleteConfirm(u)}
+                  >
+                    Удалить
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
+          <div className="modal-content modal-small" onClick={e => e.stopPropagation()}>
+            <div className="modal-body" style={{ textAlign: 'center', padding: '30px' }}>
+              <h3>Удалить пользователя?</h3>
+              <p style={{ color: '#666', margin: '12px 0 20px' }}>
+                {deleteConfirm.fullName} — это действие нельзя отменить
+              </p>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button className="btn-delete" onClick={() => handleDelete(deleteConfirm._id)}>
+                  Удалить
+                </button>
+                <button className="btn-secondary" onClick={() => setDeleteConfirm(null)}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
