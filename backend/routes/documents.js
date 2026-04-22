@@ -6,6 +6,7 @@ const File = require('../models/File');
 const { protect } = require('../middleware/auth');
 const { DOCUMENT_TYPES } = require('../config/teams');
 const { docxBufferToPdf } = require('../utils/docxToPdf');
+const { addWatermark } = require('../utils/watermark');
 
 const router = express.Router();
 
@@ -468,12 +469,15 @@ router.put('/:id/status', protect, async (req, res) => {
           convertedFiles.push(f);
           continue;
         }
+        // Накладываем водяной знак с датой утверждения
+        const approvedAt = new Date();
+        const stampedBuf = await addWatermark(pdfBuf, approvedAt);
         const newName = sourceDoc.originalName.replace(/\.docx$/i, '.pdf');
         const pdfDoc = await File.create({
           originalName: newName,
           contentType: 'application/pdf',
-          data: pdfBuf,
-          size: pdfBuf.length
+          data: stampedBuf,
+          size: stampedBuf.length
         });
         // Удаляем старый .docx
         await File.findByIdAndDelete(sourceDoc._id);
