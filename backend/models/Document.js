@@ -36,6 +36,15 @@ const departmentStatusSchema = new mongoose.Schema({
   changedAt: { type: Date, default: Date.now }
 }, { _id: false });
 
+// Полная история смен статусов — для аудита и листа согласования в PDF
+const statusHistorySchema = new mongoose.Schema({
+  department: { type: String, required: true },
+  fromStatus: { type: String, default: '' },
+  toStatus: { type: String, required: true },
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  changedAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 const documentSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -77,6 +86,7 @@ const documentSchema = new mongoose.Schema({
     type: String
   }],
   departmentStatuses: [departmentStatusSchema],
+  statusHistory: [statusHistorySchema],
   deadline: {
     type: Date,
     required: [true, 'Укажите срок рассмотрения']

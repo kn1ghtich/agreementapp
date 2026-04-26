@@ -308,3 +308,74 @@
   font-weight: 500;
   white-space: nowrap;
 }
+
+/* Список файлов в форме редактирования */
+.edit-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.edit-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f7f8fa;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #333;
+  transition: background 0.15s, opacity 0.15s, color 0.15s;
+}
+
+.edit-file-row.new {
+  background: #f0f7ff;
+  border-color: #cfe2ff;
+}
+
+.edit-file-row.removed {
+  background: #fff5f5;
+  border-color: #f7c8c8;
+  color: #b65656;
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+
+.edit-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 10px;
+}
+
+.edit-file-remove-btn {
+  background: transparent;
+  border: none;
+  color: #E53935;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.edit-file-remove-btn svg {
+  display: block;
+}
+
+.edit-file-remove-btn:hover {
+  background: rgba(229, 57, 53, 0.1);
+}
+
+.edit-file-remove-btn.undo {
+  color: #1a73e8;
+}
+
+.edit-file-remove-btn.undo:hover {
+  background: rgba(26, 115, 232, 0.1);
+}

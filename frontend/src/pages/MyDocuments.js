@@ -18,6 +18,8 @@ const MyDocuments = () => {
   const [editDoc, setEditDoc] = useState(null);
   const [editData, setEditData] = useState({});
   const [editFiles, setEditFiles] = useState([]);
+  const [existingFiles, setExistingFiles] = useState([]);
+  const [removedFileIds, setRemovedFileIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
@@ -80,8 +82,9 @@ const MyDocuments = () => {
   const isOverdue = (doc) => new Date(doc.deadline) < new Date() && doc.status !== 'Утверждено';
 
   const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('ru-RU', {
-      day: '2-digit', month: '2-digit', year: 'numeric'
+    return new Date(date).toLocaleString('ru-RU', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
     });
   };
 
@@ -100,10 +103,25 @@ const MyDocuments = () => {
       description: doc.description || '',
       documentType: doc.documentType,
       departments: doc.departments || [],
-      deadline: doc.deadline ? new Date(doc.deadline).toISOString().split('T')[0] : ''
+      deadline: doc.deadline ? (() => {
+        const d = new Date(doc.deadline);
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+        return d.toISOString().slice(0, 16);
+      })() : ''
     });
     setEditFiles([]);
+    const initialFiles = (doc.files && doc.files.length > 0)
+      ? doc.files
+      : (doc.file?.fileId ? [doc.file] : []);
+    setExistingFiles(initialFiles);
+    setRemovedFileIds([]);
     setMessage({ text: '', type: '' });
+  };
+
+  const toggleRemoveExisting = (fileId) => {
+    setRemovedFileIds(prev =>
+      prev.includes(fileId) ? prev.filter(id => id !== fileId) : [...prev, fileId]
+    );
   };
 
   const handleEditChange = (e) => {
@@ -147,6 +165,9 @@ const MyDocuments = () => {
       formData.append('documentType', editData.documentType);
       formData.append('departments', editData.departments.join(','));
       formData.append('deadline', editData.deadline);
+      if (removedFileIds.length > 0) {
+        formData.append('removeFileIds', removedFileIds.join(','));
+      }
       editFiles.forEach(f => formData.append('files', f));
 
       const { data } = await API.put(`/documents/${editDoc._id}`, formData, {
@@ -432,17 +453,74 @@ const MyDocuments = () => {
                 </div>
                 <div className="form-group">
                   <label>Срок рассмотрения</label>
-                  <input type="date" name="deadline" value={editData.deadline} onChange={handleEditChange} required />
+                  <input type="datetime-local" name="deadline" value={editData.deadline} onChange={handleEditChange} required />
                 </div>
+                {existingFiles.length > 0 && (
+                  <div className="form-group">
+                    <label>
+                      Текущие файлы ({existingFiles.length - removedFileIds.length} из {existingFiles.length})
+                    </label>
+                    <div className="edit-files-list">
+                      {existingFiles.map((f) => {
+                        const id = String(f.fileId);
+                        const removed = removedFileIds.includes(id);
+                        return (
+                          <div key={id} className={`edit-file-row ${removed ? 'removed' : ''}`}>
+                            <span className="edit-file-name">{f.originalName}</span>
+                            <button
+                              type="button"
+                              className={`edit-file-remove-btn ${removed ? 'undo' : ''}`}
+                              onClick={() => toggleRemoveExisting(id)}
+                              title={removed ? 'Вернуть' : 'Удалить файл из документа'}
+                              aria-label={removed ? 'Вернуть файл' : 'Удалить файл'}
+                            >
+                              {removed ? (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                                  <path d="M3 3v5h5" />
+                                </svg>
+                              ) : (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                  <path d="M10 11v6" />
+                                  <path d="M14 11v6" />
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {removedFileIds.length > 0 && (
+                      <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
+                        Помеченные файлы будут удалены при сохранении.
+                      </small>
+                    )}
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label>Добавить документы (.docx) {editFiles.length > 0 && `— новых: ${editFiles.length}`}</label>
                   <input type="file" accept=".docx" multiple onChange={handleEditFileChange} />
                   {editFiles.length > 0 && (
-                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div className="edit-files-list" style={{ marginTop: 8 }}>
                       {editFiles.map((f, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                          <span>📄 {f.name}</span>
-                          <button type="button" onClick={() => removeEditFile(i)} style={{ border: 'none', background: 'none', color: '#E53935', cursor: 'pointer' }}>×</button>
+                        <div key={i} className="edit-file-row new">
+                          <span className="edit-file-name">{f.name}</span>
+                          <button
+                            type="button"
+                            className="edit-file-remove-btn"
+                            onClick={() => removeEditFile(i)}
+                            title="Убрать из загрузки"
+                            aria-label="Убрать файл"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 6L6 18" />
+                              <path d="M6 6l12 12" />
+                            </svg>
+                          </button>
                         </div>
                       ))}
                     </div>

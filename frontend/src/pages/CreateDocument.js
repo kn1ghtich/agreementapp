@@ -173,13 +173,17 @@ const CreateDocument = () => {
             <div className="form-group">
               <label htmlFor="deadline">Срок рассмотрения *</label>
               <input
-                type="date"
+                type="datetime-local"
                 id="deadline"
                 name="deadline"
                 value={formData.deadline}
                 onChange={handleChange}
                 required
-                min={new Date().toISOString().split('T')[0]}
+                min={(() => {
+                  const n = new Date();
+                  n.setMinutes(n.getMinutes() - n.getTimezoneOffset());
+                  return n.toISOString().slice(0, 16);
+                })()}
               />
             </div>
           </div>

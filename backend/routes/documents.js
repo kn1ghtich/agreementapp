@@ -7,6 +7,7 @@ const { protect } = require('../middleware/auth');
 const { DOCUMENT_TYPES } = require('../config/teams');
 const { docxBufferToPdf } = require('../utils/docxToPdf');
 const { addWatermark } = require('../utils/watermark');
+const { appendAuditPage } = require('../utils/auditPage');
 
 const router = express.Router();
 
@@ -41,15 +42,17 @@ const commentUpload = multer({
 
 const POPULATE_SENDER = 'fullName avatar department';
 const POPULATE_MODIFIER = 'fullName';
-const POPULATE_COMMENT_AUTHOR = 'fullName avatar';
+const POPULATE_COMMENT_AUTHOR = 'fullName avatar department';
 const POPULATE_DEPT_CHANGED_BY = 'fullName';
+const POPULATE_HISTORY_CHANGED_BY = 'fullName department';
 
 function populateDoc(query) {
   return query
     .populate('sender', POPULATE_SENDER)
     .populate('lastModifiedBy', POPULATE_MODIFIER)
     .populate('comments.author', POPULATE_COMMENT_AUTHOR)
-    .populate('departmentStatuses.changedBy', POPULATE_DEPT_CHANGED_BY);
+    .populate('departmentStatuses.changedBy', POPULATE_DEPT_CHANGED_BY)
+    .populate('statusHistory.changedBy', POPULATE_HISTORY_CHANGED_BY);
 }
 
 // GET /api/documents/types
@@ -170,6 +173,7 @@ router.post('/', protect, upload.array('files', 20), async (req, res) => {
       departments = departments.split(',').map(d => d.trim()).filter(Boolean);
     }
 
+    const now = new Date();
     const docData = {
       title,
       description: description || '',
@@ -181,7 +185,14 @@ router.post('/', protect, upload.array('files', 20), async (req, res) => {
       departmentStatuses: departments.map(dept => ({
         department: dept,
         status: 'Входящие',
-        changedAt: new Date()
+        changedAt: now
+      })),
+      statusHistory: departments.map(dept => ({
+        department: dept,
+        fromStatus: '',
+        toStatus: 'Входящие',
+        changedBy: req.user._id,
+        changedAt: now
       }))
     };
 
@@ -342,6 +353,21 @@ router.put('/:id', protect, upload.array('files', 20), async (req, res) => {
       });
     }
 
+    // Удаление выбранных пользователем файлов
+    let removeIds = req.body.removeFileIds;
+    if (Array.isArray(removeIds)) removeIds = removeIds.join(',');
+    if (typeof removeIds === 'string' && removeIds.trim()) {
+      const idList = removeIds.split(',').map(s => s.trim()).filter(Boolean);
+      doc.files = (doc.files || []).filter(f => !idList.includes(String(f.fileId)));
+      if (doc.file?.fileId && idList.includes(String(doc.file.fileId))) {
+        doc.file = doc.files[0] || undefined;
+      }
+      // Физически чистим File-документы из БД
+      for (const id of idList) {
+        try { await File.findByIdAndDelete(id); } catch (_) { /* ignore */ }
+      }
+    }
+
     if (req.files && req.files.length > 0) {
       const newFiles = [];
       for (const f of req.files) {
@@ -354,20 +380,29 @@ router.put('/:id', protect, upload.array('files', 20), async (req, res) => {
         });
         newFiles.push({ fileId: fileDoc._id, originalName });
       }
-      // Добавляем новые файлы к существующим
+      // Добавляем новые файлы к существующим (с учётом возможных удалений выше)
       doc.files = [...(doc.files || []), ...newFiles];
       // Для обратной совместимости: file = первый файл
       if (!doc.file?.fileId) {
-        doc.file = newFiles[0];
+        doc.file = doc.files[0];
       }
     }
 
     // If doc was in Доработка, move back to На рассмотрении
     const hasDor = doc.departmentStatuses.some(ds => ds.status === 'Доработка');
     if (hasDor) {
+      const now = new Date();
       doc.departmentStatuses.forEach(ds => {
+        const prev = ds.status;
         ds.status = 'На рассмотрении';
-        ds.changedAt = new Date();
+        ds.changedAt = now;
+        doc.statusHistory.push({
+          department: ds.department,
+          fromStatus: prev,
+          toStatus: 'На рассмотрении',
+          changedBy: req.user._id,
+          changedAt: now
+        });
       });
     }
 
@@ -440,13 +475,30 @@ router.put('/:id/status', protect, async (req, res) => {
         return res.status(400).json({ message: 'Все отделы должны дать согласование перед утверждением' });
       }
       // Set ALL to Утверждено
+      const approvedAt = new Date();
       doc.departmentStatuses.forEach(ds => {
+        const prev = ds.status;
         ds.status = 'Утверждено';
         ds.changedBy = req.user._id;
-        ds.changedAt = new Date();
+        ds.changedAt = approvedAt;
+        doc.statusHistory.push({
+          department: ds.department,
+          fromStatus: prev,
+          toStatus: 'Утверждено',
+          changedBy: req.user._id,
+          changedAt: approvedAt
+        });
       });
 
-      // Конвертируем прикреплённые .docx в .pdf
+      // Сохраняем сейчас, чтобы populate подтянул свежую историю и комментарии
+      doc.lastModifiedBy = req.user._id;
+      doc.lastStatusChange = approvedAt;
+      await doc.save();
+
+      const populated = await populateDoc(Document.findById(doc._id));
+
+      // Конвертируем прикреплённые .docx в .pdf, накладываем знак,
+      // и в конце дописываем лист согласования.
       const currentFiles = (doc.files && doc.files.length > 0)
         ? doc.files
         : (doc.file?.fileId ? [doc.file] : []);
@@ -465,41 +517,60 @@ router.put('/:id/status', protect, async (req, res) => {
         }
         const pdfBuf = await docxBufferToPdf(sourceDoc.data);
         if (!pdfBuf) {
-          // Конвертация недоступна или упала — оставляем исходный .docx
           convertedFiles.push(f);
           continue;
         }
-        // Накладываем водяной знак с датой утверждения
-        const approvedAt = new Date();
         const stampedBuf = await addWatermark(pdfBuf, approvedAt);
+        const finalBuf = await appendAuditPage(stampedBuf, populated);
         const newName = sourceDoc.originalName.replace(/\.docx$/i, '.pdf');
         const pdfDoc = await File.create({
           originalName: newName,
           contentType: 'application/pdf',
-          data: stampedBuf,
-          size: stampedBuf.length
+          data: finalBuf,
+          size: finalBuf.length
         });
-        // Удаляем старый .docx
         await File.findByIdAndDelete(sourceDoc._id);
         convertedFiles.push({ fileId: pdfDoc._id, originalName: newName });
       }
 
       doc.files = convertedFiles;
       doc.file = convertedFiles[0] || undefined;
+      await doc.save();
+
+      const finalPopulated = await populateDoc(Document.findById(doc._id));
+      return res.json(finalPopulated);
     } else if (status === 'Доработка') {
       // Set ALL departments to Доработка
+      const now = new Date();
       doc.departmentStatuses.forEach(ds => {
+        const prev = ds.status;
         ds.status = 'Доработка';
         ds.changedBy = req.user._id;
-        ds.changedAt = new Date();
+        ds.changedAt = now;
+        doc.statusHistory.push({
+          department: ds.department,
+          fromStatus: prev,
+          toStatus: 'Доработка',
+          changedBy: req.user._id,
+          changedAt: now
+        });
       });
     } else {
       // Set only user's department status
       const deptStatus = doc.departmentStatuses.find(ds => ds.department === userDept);
       if (deptStatus) {
+        const prev = deptStatus.status;
+        const now = new Date();
         deptStatus.status = status;
         deptStatus.changedBy = req.user._id;
-        deptStatus.changedAt = new Date();
+        deptStatus.changedAt = now;
+        doc.statusHistory.push({
+          department: userDept,
+          fromStatus: prev,
+          toStatus: status,
+          changedBy: req.user._id,
+          changedAt: now
+        });
       }
     }
 
