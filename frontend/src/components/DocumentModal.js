@@ -194,16 +194,31 @@ const DocumentModal = ({ document, onClose, onUpdate, isSender }) => {
             </div>
           )}
 
-          {docFiles.length > 0 && (
+          {(docFiles.length > 0 || (document.links && document.links.length > 0)) && (
             <div className="modal-section">
-              <h4>{docFiles.length > 1 ? `Документы (${docFiles.length})` : 'Документ'}</h4>
+              <h4>
+                {(() => {
+                  const total = docFiles.length + (document.links?.length || 0);
+                  return total > 1 ? `Документы (${total})` : 'Документ';
+                })()}
+              </h4>
               <div className="files-list">
                 {docFiles.map((f, i) => (
-                  <div key={i} className="file-download" onClick={() => handleDownload(f.fileId)}>
+                  <div key={`f-${i}`} className="file-download" onClick={() => handleDownload(f.fileId)}>
                     <div className="file-icon">
                       {(f.originalName?.split('.').pop() || 'FILE').toUpperCase().slice(0, 4)}
                     </div>
                     <span>{f.originalName}</span>
+                  </div>
+                ))}
+                {(document.links || []).map((l, i) => (
+                  <div
+                    key={`l-${i}`}
+                    className="file-download"
+                    onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')}
+                  >
+                    <div className="file-icon" style={{ background: '#1a73e8', color: '#fff' }}>URL</div>
+                    <span>{l.title || l.url}</span>
                   </div>
                 ))}
               </div>

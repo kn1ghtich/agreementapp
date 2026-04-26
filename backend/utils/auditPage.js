@@ -111,6 +111,10 @@ async function appendAuditPage(pdfBuffer, document) {
     const valueX = MARGIN + labelW;
     const valueW = usableW - labelW - 6;
 
+    const linksLine = (document.links || [])
+      .map(l => l.title ? `${l.title}: ${l.url}` : l.url)
+      .join(' ; ');
+
     const info = [
       ['Название', document.title || '—'],
       ['Тип', document.documentType || '—'],
@@ -120,6 +124,7 @@ async function appendAuditPage(pdfBuffer, document) {
       ['Срок рассмотрения', fmtDateTime(document.deadline)],
       ['Отделы-получатели', (document.departments || []).join(', ') || '—']
     ];
+    if (linksLine) info.push(['Ссылки', linksLine]);
 
     for (const [label, value] of info) {
       const lines = wrapText(font, value, valueSize, valueW);

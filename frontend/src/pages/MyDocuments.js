@@ -20,6 +20,8 @@ const MyDocuments = () => {
   const [editFiles, setEditFiles] = useState([]);
   const [existingFiles, setExistingFiles] = useState([]);
   const [removedFileIds, setRemovedFileIds] = useState([]);
+  const [editLinks, setEditLinks] = useState([]);
+  const [editLinkInput, setEditLinkInput] = useState({ url: '', title: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
@@ -115,7 +117,25 @@ const MyDocuments = () => {
       : (doc.file?.fileId ? [doc.file] : []);
     setExistingFiles(initialFiles);
     setRemovedFileIds([]);
+    setEditLinks((doc.links || []).map(l => ({ url: l.url, title: l.title || '' })));
+    setEditLinkInput({ url: '', title: '' });
     setMessage({ text: '', type: '' });
+  };
+
+  const addEditLink = () => {
+    let url = String(editLinkInput.url || '').trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    try { new URL(url); } catch {
+      setMessage({ text: 'Некорректный URL ссылки', type: 'error' });
+      return;
+    }
+    setEditLinks(prev => [...prev, { url, title: editLinkInput.title.trim() }]);
+    setEditLinkInput({ url: '', title: '' });
+  };
+
+  const removeEditLink = (idx) => {
+    setEditLinks(prev => prev.filter((_, i) => i !== idx));
   };
 
   const toggleRemoveExisting = (fileId) => {
@@ -168,6 +188,7 @@ const MyDocuments = () => {
       if (removedFileIds.length > 0) {
         formData.append('removeFileIds', removedFileIds.join(','));
       }
+      formData.append('links', JSON.stringify(editLinks));
       editFiles.forEach(f => formData.append('files', f));
 
       const { data } = await API.put(`/documents/${editDoc._id}`, formData, {
@@ -335,6 +356,16 @@ const MyDocuments = () => {
                     </div>
                   ));
                 })()}
+                {doc.links && doc.links.length > 0 && doc.links.map((l, i) => (
+                  <div
+                    key={`l-${i}`}
+                    className="mydoc-file"
+                    onClick={() => window.open(l.url, '_blank', 'noopener,noreferrer')}
+                  >
+                    <span className="file-icon-sm" style={{ background: '#1a73e8' }}>URL</span>
+                    <span>{l.title || l.url}</span>
+                  </div>
+                ))}
                 {doc.lastModifiedBy && (
                   <p className="mydoc-last-change">
                     Последнее изменение:{' '}
@@ -526,6 +557,53 @@ const MyDocuments = () => {
                     </div>
                   )}
                 </div>
+                <div className="form-group">
+                  <label>Ссылки на документы {editLinks.length > 0 && `(${editLinks.length})`}</label>
+                  {editLinks.length > 0 && (
+                    <div className="edit-files-list">
+                      {editLinks.map((l, i) => (
+                        <div key={i} className="edit-file-row">
+                          <a href={l.url} target="_blank" rel="noopener noreferrer" className="edit-file-name file-link-name">
+                            {l.title || l.url}
+                          </a>
+                          <button
+                            type="button"
+                            className="edit-file-remove-btn"
+                            onClick={() => removeEditLink(i)}
+                            title="Убрать ссылку"
+                            aria-label="Убрать ссылку"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 6h18" />
+                              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="link-add-row" style={{ marginTop: 8 }}>
+                    <input
+                      type="url"
+                      placeholder="https://docs.google.com/..."
+                      value={editLinkInput.url}
+                      onChange={(e) => setEditLinkInput(prev => ({ ...prev, url: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEditLink(); } }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Подпись (опционально)"
+                      value={editLinkInput.title}
+                      onChange={(e) => setEditLinkInput(prev => ({ ...prev, title: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEditLink(); } }}
+                    />
+                    <button type="button" className="btn-secondary" onClick={addEditLink}>Добавить</button>
+                  </div>
+                </div>
+
                 <div style={{display: 'flex', gap: '10px'}}>
                   <button type="submit" className="btn-primary" disabled={saving}>
                     {saving ? 'Сохранение...' : 'Сохранить'}

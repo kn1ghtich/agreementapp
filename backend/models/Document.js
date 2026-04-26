@@ -74,6 +74,11 @@ const documentSchema = new mongoose.Schema({
     fileId: { type: mongoose.Schema.Types.ObjectId, ref: 'File' },
     originalName: String
   }],
+  links: [{
+    _id: false,
+    url: { type: String, required: true },
+    title: { type: String, default: '' }
+  }],
   sender: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

@@ -173,6 +173,15 @@ router.post('/', protect, upload.array('files', 20), async (req, res) => {
       departments = departments.split(',').map(d => d.trim()).filter(Boolean);
     }
 
+    let links = req.body.links;
+    if (typeof links === 'string' && links.trim()) {
+      try { links = JSON.parse(links); } catch { links = []; }
+    }
+    if (!Array.isArray(links)) links = [];
+    links = links
+      .map(l => ({ url: String(l.url || '').trim(), title: String(l.title || '').trim() }))
+      .filter(l => l.url);
+
     const now = new Date();
     const docData = {
       title,
@@ -182,6 +191,7 @@ router.post('/', protect, upload.array('files', 20), async (req, res) => {
       senderDepartment: req.user.department,
       deadline: new Date(deadline),
       sender: req.user._id,
+      links,
       departmentStatuses: departments.map(dept => ({
         department: dept,
         status: 'Входящие',
@@ -340,6 +350,18 @@ router.put('/:id', protect, upload.array('files', 20), async (req, res) => {
     if (description !== undefined) doc.description = description;
     if (documentType) doc.documentType = documentType;
     if (deadline) doc.deadline = new Date(deadline);
+
+    // Полная замена набора ссылок (фронт всегда шлёт актуальный список)
+    if (req.body.links !== undefined) {
+      let links = req.body.links;
+      if (typeof links === 'string') {
+        try { links = JSON.parse(links); } catch { links = []; }
+      }
+      if (!Array.isArray(links)) links = [];
+      doc.links = links
+        .map(l => ({ url: String(l.url || '').trim(), title: String(l.title || '').trim() }))
+        .filter(l => l.url);
+    }
 
     if (departments && departments.length > 0) {
       // Update departments and sync departmentStatuses

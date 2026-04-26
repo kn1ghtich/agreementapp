@@ -13,6 +13,8 @@ const CreateDocument = () => {
     deadline: ''
   });
   const [files, setFiles] = useState([]);
+  const [links, setLinks] = useState([]);
+  const [linkInput, setLinkInput] = useState({ url: '', title: '' });
   const [docTypes, setDocTypes] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [error, setError] = useState('');
@@ -60,6 +62,32 @@ const CreateDocument = () => {
     setFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const normalizeUrl = (raw) => {
+    const u = String(raw || '').trim();
+    if (!u) return '';
+    if (/^https?:\/\//i.test(u)) return u;
+    return `https://${u}`;
+  };
+
+  const addLink = () => {
+    const url = normalizeUrl(linkInput.url);
+    if (!url) return;
+    try {
+      // eslint-disable-next-line no-new
+      new URL(url);
+    } catch {
+      setError('Некорректный URL ссылки');
+      return;
+    }
+    setLinks(prev => [...prev, { url, title: linkInput.title.trim() }]);
+    setLinkInput({ url: '', title: '' });
+    setError('');
+  };
+
+  const removeLink = (idx) => {
+    setLinks(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -79,6 +107,7 @@ const CreateDocument = () => {
       data.append('documentType', formData.documentType);
       data.append('departments', formData.departments.join(','));
       data.append('deadline', formData.deadline);
+      data.append('links', JSON.stringify(links));
       files.forEach(f => data.append('files', f));
 
       await API.post('/documents', data, {
@@ -88,6 +117,8 @@ const CreateDocument = () => {
       setSuccess('Документ успешно создан!');
       setFormData({ title: '', description: '', documentType: '', departments: [], deadline: '' });
       setFiles([]);
+      setLinks([]);
+      setLinkInput({ url: '', title: '' });
 
       setTimeout(() => navigate('/my-documents'), 1500);
     } catch (err) {
@@ -238,6 +269,40 @@ const CreateDocument = () => {
                   <span>{files.length > 0 ? 'Добавить ещё .docx файл(ы)' : 'Нажмите для загрузки .docx файла(ов)'}</span>
                 </div>
               </label>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Ссылки на документы (Google Docs, Office 365 и др.) {links.length > 0 && `— добавлено: ${links.length}`}</label>
+            {links.length > 0 && (
+              <div className="files-selected-list" style={{ marginBottom: 8 }}>
+                {links.map((l, idx) => (
+                  <div key={idx} className="file-selected">
+                    <span className="file-icon-sm" style={{ background: '#1a73e8' }}>URL</span>
+                    <a href={l.url} target="_blank" rel="noopener noreferrer" className="file-link-name">
+                      {l.title || l.url}
+                    </a>
+                    <button type="button" className="file-remove" onClick={() => removeLink(idx)}>&times;</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="link-add-row">
+              <input
+                type="url"
+                placeholder="https://docs.google.com/..."
+                value={linkInput.url}
+                onChange={(e) => setLinkInput(prev => ({ ...prev, url: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } }}
+              />
+              <input
+                type="text"
+                placeholder="Подпись (опционально)"
+                value={linkInput.title}
+                onChange={(e) => setLinkInput(prev => ({ ...prev, title: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLink(); } }}
+              />
+              <button type="button" className="btn-secondary" onClick={addLink}>Добавить</button>
             </div>
           </div>
 
